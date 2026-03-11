@@ -1,0 +1,115 @@
+{
+  "projectType": "saas",
+  "projectName": "Restaurant Management System",
+  "projectDescription": "A full-stack restaurant management platform with multi-role authentication, menu management, table reservations, and order processing",
+  "theme": "almond",
+  "primaryColor": "#ef370f",
+  "lightColor": "#f79d72",
+  "darkColor": "#040404",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/authentication",
+              "features/menu-management",
+              "features/reservations",
+              "features/orders",
+              "features/table-management"
+            ]
+          },
+          {
+            "group": "User Roles",
+            "pages": [
+              "roles/admin",
+              "roles/chef",
+              "roles/waiter",
+              "roles/customer"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/deployment",
+              "guides/configuration",
+              "guides/database-setup",
+              "guides/docker"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/food",
+              "api/models/order",
+              "api/models/reservation",
+              "api/models/table",
+              "api/models/chef",
+              "api/models/cart"
+            ]
+          },
+          {
+            "group": "Controllers",
+            "pages": [
+              "api/controllers/home",
+              "api/controllers/admin",
+              "api/controllers/cart",
+              "api/controllers/chef",
+              "api/controllers/waiter"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "api/commands/check-reservations"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-role authentication (Admin, Chef, Waiter, Customer)",
+    "Menu management with categories and nutritional information",
+    "Table reservation system with automated status updates",
+    "Shopping cart and order processing",
+    "Chef profile management",
+    "Real-time table status tracking",
+    "Order history and management dashboard",
+    "Role-based access control with Spatie permissions"
+  ],
+  "publicApiSurface": [
+    "GET / - Home page with menu",
+    "GET /menu - Full menu view",
+    "GET /infocomida/{food} - Food details",
+    "POST /cart/{food} - Add to cart",
+    "DELETE /cart/{cart} - Remove from cart",
+    "POST /orderconfirm - Create order",
+    "Admin: /admin/users, /admin/foodmenu, /admin/chefs, /admin/reservations, /admin/tables, /admin/orders",
+    "Chef: /admin/foods, /admin/profile",
+    "Waiter: /admin/tables, /admin/reservations",
+    "Command: php artisan reservations:check"
+  ]
+}
