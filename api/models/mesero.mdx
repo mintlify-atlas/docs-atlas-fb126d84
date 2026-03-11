@@ -1,0 +1,192 @@
+---
+title: "Mesero Model"
+description: "Waiter/server profile model"
+icon: "bell-concierge"
+---
+
+## Overview
+
+The `Mesero` model represents waiter/server profiles in the Restaurant Management System. This model is used to store additional information about staff members who serve customers and manage tables.
+
+<Note>
+  "Mesero" is Spanish for "waiter" or "server". This model stores profile information for waitstaff in the restaurant.
+</Note>
+
+## Database Table
+
+**Table Name:** `meseros`
+
+## Current Implementation
+
+The current implementation is a minimal model without fillable attributes defined:
+
+```php app/Models/Mesero.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Mesero extends Model
+{
+    use HasFactory;
+}
+```
+
+## Database Schema
+
+Based on the system's usage patterns, the meseros table likely includes:
+
+```sql
+CREATE TABLE meseros (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
+    name VARCHAR(255) NULL,
+    phone VARCHAR(255) NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+## Recommended Enhancements
+
+For a complete waiter profile system, consider adding:
+
+### Fillable Attributes
+
+```php
+protected $fillable = [
+    'user_id',
+    'name',
+    'phone',
+    'shift',      // morning, afternoon, evening, night
+    'section',    // assigned section of the restaurant
+    'status',     // active, on_break, off_duty
+];
+```
+
+### Relationships
+
+```php
+// Belongs to User
+public function user()
+{
+    return $this->belongsTo(User::class);
+}
+
+// Has many assigned tables
+public function tables()
+{
+    return $this->hasMany(Table::class, 'assigned_mesero_id');
+}
+
+// Has many handled reservations
+public function reservations()
+{
+    return $this->hasMany(Reservation::class, 'mesero_id');
+}
+```
+
+## Usage in the System
+
+The Mesero model is associated with the **mesero** role in the authentication system. Users with the mesero role have access to:
+
+### Table Management
+- View all tables
+- Update table status
+- Mark tables as used
+- Assign tables to reservations
+
+### Reservation Management
+- View all reservations
+- Assign tables to reservations
+- Cancel reservations
+
+### Access Control
+
+Mesero access is controlled through role-based middleware:
+
+```php routes/web.php
+Route::middleware('role:admin,mesero')->group(function () {
+    Route::resource('tables', AdminTableController::class)->names('tables');
+    Route::post('tables/{table}/mark-as-used', [AdminTableController::class, 'markAsUsed']);
+    
+    Route::get('reservations', [AdminReservationController::class, 'index']);
+    Route::post('reservations/{reservation}/assign-table', [AdminReservationController::class, 'assignTable']);
+    Route::delete('reservations/{reservation}', [AdminReservationController::class, 'destroy']);
+});
+```
+
+## Example Usage
+
+### Creating a Mesero Profile
+
+```php
+// Assuming enhanced implementation with fillable attributes
+$mesero = Mesero::create([
+    'user_id' => $user->id,
+    'name' => 'Carlos Rodriguez',
+    'phone' => '+1234567890',
+    'shift' => 'evening',
+    'section' => 'Section A',
+    'status' => 'active',
+]);
+```
+
+### Querying Meseros
+
+```php
+// Get all active meseros
+$activeMeseros = Mesero::where('status', 'active')->get();
+
+// Get mesero with user information
+$mesero = Mesero::with('user')->find(1);
+
+// Get meseros working a specific shift
+$eveningStaff = Mesero::where('shift', 'evening')
+    ->where('status', 'active')
+    ->get();
+```
+
+### Associating with User
+
+```php
+// Get user from mesero
+$mesero = Mesero::find(1);
+$user = $mesero->user;
+
+// Check if user has mesero role
+if ($user->hasRole('mesero')) {
+    // User is a waiter
+}
+```
+
+## Dashboard Access
+
+Meseros have access to a dedicated dashboard:
+
+```php
+Route::get('/admin/dashboard', [MeseroDashboardController::class, 'index'])
+    ->middleware(['auth', 'role:mesero'])
+    ->name('mesero.dashboard');
+```
+
+## Related Documentation
+
+- [Waiter Role](/roles/waiter) - Detailed waiter role documentation
+- [Waiter Controller](/api/controllers/waiter) - Controller endpoints for waiters
+- [Table Management](/features/table-management) - Table management features
+- [Reservations](/features/reservations) - Reservation system
+- [User Model](/api/models/user) - Base user authentication model
+
+## Future Enhancements
+
+Consider implementing:
+
+1. **Performance Tracking** - Track orders served, customer satisfaction ratings
+2. **Shift Management** - Clock in/out functionality, shift scheduling
+3. **Tips Tracking** - Record and manage tip distribution
+4. **Training Status** - Track training completion and certifications
+5. **Workload Metrics** - Monitor tables assigned, orders processed

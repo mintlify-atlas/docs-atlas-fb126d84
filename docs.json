@@ -79,12 +79,16 @@
           {
             "group": "Models",
             "pages": [
+              "api/models/user",
               "api/models/food",
+              "api/models/category",
               "api/models/order",
               "api/models/reservation",
               "api/models/table",
               "api/models/chef",
-              "api/models/cart"
+              "api/models/mesero",
+              "api/models/cart",
+              "api/models/foodchef"
             ]
           },
           {

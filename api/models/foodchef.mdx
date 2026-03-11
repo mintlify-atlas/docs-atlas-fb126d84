@@ -1,0 +1,264 @@
+---
+title: "Foodchef Model"
+description: "Junction model for food-chef relationships"
+icon: "link"
+---
+
+## Overview
+
+The `Foodchef` model is a junction/pivot model that manages the many-to-many relationship between food items and chefs. This model allows tracking which chefs are responsible for or specialize in preparing specific dishes.
+
+## Database Table
+
+**Table Name:** `foodchefs`
+
+## Current Implementation
+
+The current implementation is a minimal model:
+
+```php app/Models/Foodchef.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Foodchef extends Model
+{
+    use HasFactory;
+}
+```
+
+## Database Schema
+
+The `foodchefs` table serves as a pivot table linking foods and chefs:
+
+```sql migrations/2024_10_28_164020_create_foodchefs_table.php
+CREATE TABLE foodchefs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    food_id BIGINT UNSIGNED NOT NULL,
+    chef_id BIGINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    FOREIGN KEY (food_id) REFERENCES food(id) ON DELETE CASCADE,
+    FOREIGN KEY (chef_id) REFERENCES chefs(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_food_chef (food_id, chef_id)
+);
+```
+
+## Purpose
+
+This junction model enables:
+
+1. **Chef Specialization** - Track which dishes each chef specializes in
+2. **Food Attribution** - Show which chefs can prepare specific dishes
+3. **Workload Distribution** - Assign dishes to chefs based on their expertise
+4. **Menu Planning** - Plan menus based on available chef specialties
+
+## Recommended Enhanced Implementation
+
+For a more feature-rich implementation, consider:
+
+```php
+protected $fillable = [
+    'food_id',
+    'chef_id',
+    'proficiency_level',  // beginner, intermediate, expert, master
+    'preparation_time',   // estimated time in minutes
+    'is_primary',        // is this the primary chef for this dish?
+];
+
+public function food()
+{
+    return $this->belongsTo(Food::class);
+}
+
+public function chef()
+{
+    return $this->belongsTo(Chef::class);
+}
+```
+
+## Using as a Pivot Model
+
+This model is typically used through Eloquent's many-to-many relationships:
+
+### In Food Model
+
+```php app/Models/Food.php
+public function chefs()
+{
+    return $this->belongsToMany(Chef::class, 'foodchefs')
+                ->withTimestamps()
+                ->withPivot('proficiency_level', 'preparation_time', 'is_primary');
+}
+```
+
+### In Chef Model
+
+```php app/Models/Chef.php
+public function foods()
+{
+    return $this->belongsToMany(Food::class, 'foodchefs')
+                ->withTimestamps()
+                ->withPivot('proficiency_level', 'preparation_time', 'is_primary');
+}
+```
+
+## Usage Examples
+
+### Assign a Chef to a Food Item
+
+```php
+// Method 1: Using attach
+$food = Food::find(1);
+$food->chefs()->attach($chefId, [
+    'proficiency_level' => 'expert',
+    'preparation_time' => 25,
+    'is_primary' => true,
+]);
+
+// Method 2: Using sync (replaces all relationships)
+$food->chefs()->sync([
+    1 => ['proficiency_level' => 'expert', 'is_primary' => true],
+    2 => ['proficiency_level' => 'intermediate', 'is_primary' => false],
+]);
+```
+
+### Get Chefs for a Food Item
+
+```php
+$food = Food::with('chefs')->find(1);
+
+foreach ($food->chefs as $chef) {
+    echo "{$chef->name} - {$chef->pivot->proficiency_level}";
+    echo "Prep time: {$chef->pivot->preparation_time} minutes";
+}
+```
+
+### Get Foods for a Chef
+
+```php
+$chef = Chef::with('foods')->find(1);
+
+foreach ($chef->foods as $food) {
+    echo "{$food->title} - {$food->pivot->proficiency_level}";
+    if ($food->pivot->is_primary) {
+        echo " (Primary Chef)";
+    }
+}
+```
+
+### Get Primary Chef for a Dish
+
+```php
+$food = Food::find(1);
+$primaryChef = $food->chefs()
+    ->wherePivot('is_primary', true)
+    ->first();
+
+if ($primaryChef) {
+    echo "Primary chef: {$primaryChef->name}";
+}
+```
+
+### Query by Proficiency
+
+```php
+// Get all dishes a chef is an expert at
+$chef = Chef::find(1);
+$expertDishes = $chef->foods()
+    ->wherePivot('proficiency_level', 'expert')
+    ->get();
+
+// Get all expert chefs for a dish
+$food = Food::find(1);
+$expertChefs = $food->chefs()
+    ->wherePivot('proficiency_level', 'expert')
+    ->get();
+```
+
+### Remove Chef Assignment
+
+```php
+// Remove specific chef from a food item
+$food = Food::find(1);
+$food->chefs()->detach($chefId);
+
+// Remove all chef assignments from a food item
+$food->chefs()->detach();
+
+// Remove specific food from a chef's specialties
+$chef = Chef::find(1);
+$chef->foods()->detach($foodId);
+```
+
+## Direct Model Usage
+
+While typically accessed through relationships, you can also query the model directly:
+
+```php
+// Get all food-chef assignments
+$assignments = Foodchef::all();
+
+// Get assignments for a specific food
+$foodAssignments = Foodchef::where('food_id', 1)->get();
+
+// Get assignments for a specific chef
+$chefAssignments = Foodchef::where('chef_id', 1)->get();
+
+// Create a direct assignment
+Foodchef::create([
+    'food_id' => 1,
+    'chef_id' => 2,
+]);
+```
+
+## Use Cases
+
+### Menu Planning
+
+```php
+// Get available dishes based on chefs on duty
+$onDutyChefIds = Chef::where('status', 'on_duty')->pluck('id');
+
+$availableDishes = Food::whereHas('chefs', function ($query) use ($onDutyChefIds) {
+    $query->whereIn('chef_id', $onDutyChefIds);
+})->get();
+```
+
+### Chef Workload
+
+```php
+// Get chef workload (number of assigned dishes)
+$chefs = Chef::withCount('foods')->get();
+
+foreach ($chefs as $chef) {
+    echo "{$chef->name}: {$chef->foods_count} dishes";
+}
+```
+
+### Dish Expertise
+
+```php
+// Find dishes that need more expert chefs
+$dishesNeedingExperts = Food::whereDoesntHave('chefs', function ($query) {
+    $query->wherePivot('proficiency_level', 'expert');
+})->get();
+```
+
+## Related Documentation
+
+- [Food Model](/api/models/food) - Food item model
+- [Chef Model](/api/models/chef) - Chef profile model
+- [Menu Management](/features/menu-management) - Menu management features
+- [Chef Role](/roles/chef) - Chef role documentation
+
+## Best Practices
+
+1. **Unique Constraints** - Use database constraints to prevent duplicate food-chef assignments
+2. **Cascade Deletes** - Ensure pivot records are cleaned up when food or chef is deleted
+3. **Timestamps** - Use `withTimestamps()` to track when assignments are made
+4. **Soft Deletes** - Consider using soft deletes if you need to maintain historical records
+5. **Validation** - Validate that both food and chef exist before creating assignments

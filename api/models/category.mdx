@@ -1,0 +1,159 @@
+---
+title: "Category Model"
+description: "Menu category model for organizing food items"
+icon: "tag"
+---
+
+## Overview
+
+The `Category` model represents menu categories used to organize food items in the restaurant system. Categories provide a way to group similar dishes together for easier navigation and menu organization.
+
+## Database Table
+
+**Table Name:** `categories`
+
+## Fillable Attributes
+
+<ParamField path="name" type="string" required>
+  The category name (e.g., "Appetizers", "Main Courses", "Desserts", "Beverages")
+</ParamField>
+
+## Relationships
+
+### Has Many: Foods
+
+A category can have multiple food items associated with it.
+
+```php app/Models/Category.php
+public function foods()
+{
+    return $this->hasMany(Food::class);
+}
+```
+
+**Usage Example:**
+
+```php
+// Get all foods in a category
+$category = Category::find(1);
+$foods = $category->foods;
+
+// Get category with food count
+$categoriesWithCount = Category::withCount('foods')->get();
+```
+
+## Model Definition
+
+```php app/Models/Category.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Category extends Model
+{
+    use HasFactory;
+
+    protected $table = 'categories';
+
+    protected $fillable = ['name'];
+
+    // Relación: Una categoría tiene muchas comidas
+    public function foods()
+    {
+        return $this->hasMany(Food::class);
+    }
+}
+```
+
+## Database Schema
+
+```sql
+CREATE TABLE categories (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+```
+
+## Usage Examples
+
+### Creating a Category
+
+```php
+$category = Category::create([
+    'name' => 'Main Courses'
+]);
+```
+
+### Querying Categories
+
+```php
+// Get all categories
+$categories = Category::all();
+
+// Get categories with food count
+$categories = Category::withCount('foods')->get();
+
+foreach ($categories as $category) {
+    echo "{$category->name}: {$category->foods_count} items";
+}
+
+// Get category with all its foods
+$category = Category::with('foods')->find(1);
+```
+
+### Updating a Category
+
+```php
+$category = Category::find(1);
+$category->update(['name' => 'Beverages & Drinks']);
+```
+
+### Deleting a Category
+
+```php
+$category = Category::find(1);
+$category->delete();
+```
+
+<Warning>
+  Deleting a category may affect associated food items. Ensure you have proper foreign key constraints or cascading rules in place, or manually handle the relationship cleanup.
+</Warning>
+
+## Common Queries
+
+### Get Popular Categories
+
+```php
+// Categories with the most food items
+$popularCategories = Category::withCount('foods')
+    ->orderBy('foods_count', 'desc')
+    ->take(5)
+    ->get();
+```
+
+### Get Categories for Menu Display
+
+```php
+// Categories with at least one food item
+$activeCategories = Category::has('foods')
+    ->with(['foods' => function ($query) {
+        $query->latest()->take(10);
+    }])
+    ->get();
+```
+
+## Related Models
+
+- [Food Model](/api/models/food) - Food items belong to categories
+
+## Controller Usage
+
+Categories are typically managed through the admin food management interface. See:
+
+- [Admin Controller](/api/controllers/admin)
+- [Menu Management Feature](/features/menu-management)

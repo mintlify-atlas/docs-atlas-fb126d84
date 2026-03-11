@@ -1,0 +1,322 @@
+---
+title: "User Model"
+description: "Core authentication and user management model"
+icon: "user"
+---
+
+## Overview
+
+The `User` model is the core authentication model for the Restaurant Management System. It extends Laravel's `Authenticatable` class and integrates with Laravel Sanctum for API authentication and Spatie Permission for role-based access control.
+
+## Database Table
+
+**Table Name:** `users`
+
+## Fillable Attributes
+
+<ParamField path="name" type="string" required>
+  The user's full name
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  The user's email address (must be unique)
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  The user's hashed password (automatically hashed using Laravel's password hashing)
+</ParamField>
+
+## Hidden Attributes
+
+These attributes are automatically hidden when the model is serialized to JSON:
+
+- `password` - Never exposed in API responses
+- `remember_token` - Used internally for "remember me" functionality
+
+## Casts
+
+<ResponseField name="email_verified_at" type="datetime">
+  Timestamp of when the user verified their email address
+</ResponseField>
+
+<ResponseField name="password" type="hashed">
+  Automatically hashed when set
+</ResponseField>
+
+## Traits
+
+The User model uses several important traits:
+
+### HasApiTokens
+
+Provided by Laravel Sanctum for API token authentication:
+
+```php
+use Laravel\Sanctum\HasApiTokens;
+```
+
+### HasRoles
+
+Provided by Spatie Permission for role-based access control:
+
+```php
+use Spatie\Permission\Traits\HasRoles;
+```
+
+This trait provides methods like:
+- `hasRole($role)` - Check if user has a specific role
+- `assignRole($role)` - Assign a role to the user
+- `removeRole($role)` - Remove a role from the user
+- `getRoleNames()` - Get all role names for the user
+- `hasAnyRole($roles)` - Check if user has any of the specified roles
+
+### HasFactory
+
+Enables model factories for testing and seeding:
+
+```php
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+```
+
+### Notifiable
+
+Enables notification functionality:
+
+```php
+use Illuminate\Notifications\Notifiable;
+```
+
+## Model Definition
+
+```php app/Models/User.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles; 
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasFactory, Notifiable, HasRoles;
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+}
+```
+
+## Database Schema
+
+```sql
+CREATE TABLE users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    email_verified_at TIMESTAMP NULL,
+    password VARCHAR(255) NOT NULL,
+    remember_token VARCHAR(100) NULL,
+    current_team_id BIGINT UNSIGNED NULL,
+    profile_photo_path VARCHAR(2048) NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    INDEX(email)
+);
+```
+
+## Roles
+
+The system uses four primary roles:
+
+1. **admin** - Full system access
+2. **chef** - Menu management and profile access
+3. **mesero** (waiter) - Table and reservation management
+4. **customer** - Default role for registered users
+
+### Role Assignment
+
+```php
+// Assign a role to a user
+$user = User::find(1);
+$user->assignRole('admin');
+
+// Assign multiple roles
+$user->assignRole(['chef', 'admin']);
+
+// Check if user has a role
+if ($user->hasRole('admin')) {
+    // User is an admin
+}
+
+// Check if user has any of multiple roles
+if ($user->hasAnyRole(['admin', 'chef'])) {
+    // User is either admin or chef
+}
+```
+
+## Usage Examples
+
+### Creating a User
+
+```php
+use Illuminate\Support\Facades\Hash;
+
+$user = User::create([
+    'name' => 'John Doe',
+    'email' => 'john@example.com',
+    'password' => Hash::make('password123'),
+]);
+
+// Assign a role
+$user->assignRole('customer');
+```
+
+### Authentication Check
+
+```php
+// In a controller
+use Illuminate\Support\Facades\Auth;
+
+$user = Auth::user();
+
+if ($user) {
+    echo "Logged in as: " . $user->name;
+    echo "Roles: " . $user->getRoleNames()->implode(', ');
+}
+```
+
+### Querying Users by Role
+
+```php
+// Get all admins
+$admins = User::role('admin')->get();
+
+// Get all chefs
+$chefs = User::role('chef')->get();
+
+// Get users with any of multiple roles
+$staff = User::role(['admin', 'chef', 'mesero'])->get();
+```
+
+### Updating User Profile
+
+```php
+$user = User::find(1);
+$user->update([
+    'name' => 'Jane Doe',
+    'email' => 'jane@example.com',
+]);
+```
+
+### Changing Password
+
+```php
+use Illuminate\Support\Facades\Hash;
+
+$user = User::find(1);
+$user->update([
+    'password' => Hash::make('newpassword123'),
+]);
+```
+
+## API Token Authentication
+
+```php
+// Create a token for API authentication
+$token = $user->createToken('api-token')->plainTextToken;
+
+// Revoke all tokens
+$user->tokens()->delete();
+
+// Revoke specific token
+$user->tokens()->where('id', $tokenId)->delete();
+```
+
+## Seeded Users
+
+The database seeder creates four default users:
+
+```php
+// Admin
+email: admin@gmail.com
+password: admin1234
+role: admin
+
+// Customer
+email: user@gmail.com
+password: user1234
+role: (no specific role - customer by default)
+
+// Chef
+email: chef@gmail.com
+password: chef1234
+role: chef
+
+// Waiter
+email: mesero@gmail.com
+password: mesero1234
+role: mesero
+```
+
+<Note>
+  These are seeded credentials for development and testing. Change them in production!
+</Note>
+
+## Security Considerations
+
+### Password Hashing
+
+Passwords are automatically hashed when set, thanks to the `hashed` cast:
+
+```php
+protected $casts = [
+    'password' => 'hashed',
+];
+```
+
+### Hidden Fields
+
+Sensitive fields are automatically excluded from JSON responses:
+
+```php
+protected $hidden = [
+    'password',
+    'remember_token',
+];
+```
+
+### Email Verification
+
+The model implements the `MustVerifyEmail` contract for email verification:
+
+```php
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+
+class User extends Authenticatable implements MustVerifyEmail
+```
+
+## Related Documentation
+
+- [Authentication Feature](/features/authentication)
+- [API Authentication](/api/authentication)
+- [Admin Role](/roles/admin)
+- [Chef Role](/roles/chef)
+- [Waiter Role](/roles/waiter)
+- [Customer Role](/roles/customer)
+- [Admin Controller](/api/controllers/admin)
