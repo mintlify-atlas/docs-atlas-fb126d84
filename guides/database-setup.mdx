@@ -1,0 +1,562 @@
+---
+title: 'Database Setup'
+description: 'Complete guide to setting up and understanding the database schema'
+icon: 'database'
+---
+
+## Overview
+
+The Restaurant Management System uses MySQL as its primary database. This guide covers the complete database schema, migrations, and setup procedures.
+
+## Database Schema
+
+The system includes 15 migrations that create the following core tables:
+
+- **Users & Authentication** - User accounts, sessions, tokens
+- **Restaurant Management** - Tables, reservations, orders
+- **Menu System** - Food items, categories, chefs
+- **Shopping Cart** - Cart items for orders
+- **Permissions** - Role-based access control
+
+## Quick Setup
+
+<Steps>
+  <Step title="Configure Database Connection">
+    Update your `.env` file with database credentials:
+    
+    ```bash .env
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_PORT=3306
+    DB_DATABASE=restaurante
+    DB_USERNAME=root
+    DB_PASSWORD=your-password
+    ```
+  </Step>
+
+  <Step title="Create Database">
+    Create the database using MySQL:
+    
+    ```bash
+    mysql -u root -p
+    ```
+    
+    ```sql
+    CREATE DATABASE restaurante CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    EXIT;
+    ```
+  </Step>
+
+  <Step title="Run Migrations">
+    Execute all migrations to create tables:
+    
+    ```bash
+    php artisan migrate
+    ```
+    
+    For production environments:
+    
+    ```bash
+    php artisan migrate --force
+    ```
+  </Step>
+
+  <Step title="Verify Migration">
+    Check migration status:
+    
+    ```bash
+    php artisan migrate:status
+    ```
+  </Step>
+</Steps>
+
+## Detailed Schema Documentation
+
+### Users Table
+
+**Migration:** `2014_10_12_000000_create_users_table.php`
+
+Manages all user accounts with role-based access.
+
+```php
+Schema::create('users', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->string('email')->unique();
+    $table->enum('usertype', ['user','admin', 'chef', 'mesero'])->default('user');
+    $table->timestamp('email_verified_at')->nullable();
+    $table->string('password');
+    $table->rememberToken();
+    $table->foreignId('current_team_id')->nullable();
+    $table->string('profile_photo_path', 2048)->nullable();
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `name` | VARCHAR | User's full name |
+| `email` | VARCHAR | Unique email address |
+| `usertype` | ENUM | User role: `user`, `admin`, `chef`, `mesero` |
+| `email_verified_at` | TIMESTAMP | Email verification time |
+| `password` | VARCHAR | Hashed password |
+| `remember_token` | VARCHAR | Remember me token |
+| `current_team_id` | BIGINT | Current team (Jetstream) |
+| `profile_photo_path` | VARCHAR | Profile image path |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+<Note>
+**User Types:**
+- `user` - Regular customers
+- `admin` - Full system access
+- `chef` - Kitchen staff
+- `mesero` - Waiters/servers
+</Note>
+
+### Sessions Table
+
+**Migration:** `2024_10_19_140401_create_sessions_table.php`
+
+Stores user session data for authentication.
+
+```php
+Schema::create('sessions', function (Blueprint $table) {
+    $table->string('id')->primary();
+    $table->foreignId('user_id')->nullable()->index();
+    $table->string('ip_address', 45)->nullable();
+    $table->text('user_agent')->nullable();
+    $table->longText('payload');
+    $table->integer('last_activity')->index();
+});
+```
+
+### Food Table
+
+**Migration:** `2024_11_28_041719_create_food_table.php`
+
+Stores menu items with detailed nutritional information.
+
+```php
+Schema::create('food', function (Blueprint $table) {
+    $table->id();
+    $table->string("title")->nullable();
+    $table->decimal('price', 8, 2)->nullable();
+    $table->string("image")->nullable();
+    $table->string("description")->nullable();
+    $table->text('ingredients')->nullable();
+    $table->string('proteins')->nullable();
+    $table->integer('calories')->nullable();
+    $table->string('size')->nullable();
+    $table->foreignId('category_id')
+          ->nullable()
+          ->constrained('categories')
+          ->onDelete('set null');
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `title` | VARCHAR | Dish name |
+| `price` | DECIMAL(8,2) | Item price |
+| `image` | VARCHAR | Image file path |
+| `description` | VARCHAR | Item description |
+| `ingredients` | TEXT | List of ingredients |
+| `proteins` | VARCHAR | Protein content |
+| `calories` | INTEGER | Calorie count |
+| `size` | VARCHAR | Portion size |
+| `category_id` | BIGINT | Foreign key to categories |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+<Note>
+The `category_id` uses `onDelete('set null')` - if a category is deleted, food items remain but lose their category.
+</Note>
+
+### Categories Table
+
+**Migration:** `2024_11_27_220358_create_categories_table.php`
+
+Organizes food items into categories.
+
+```php
+Schema::create('categories', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->timestamps();
+});
+```
+
+Examples: Appetizers, Main Courses, Desserts, Beverages, etc.
+
+### Chefs Table
+
+**Migration:** `2024_10_30_190047_create_chefs_table.php`
+
+Manages chef profiles and kitchen area assignments.
+
+```php
+Schema::create('chefs', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained()->onDelete('cascade');
+    $table->string('first_name');
+    $table->string('last_name');
+    $table->string('specialty');
+    $table->text('description')->nullable();
+    $table->enum('area', ['preparacion', 'cocinar', 'servir', 'almacenamiento', 'lavar', 'pedidos']);
+    $table->string('image')->nullable();
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `user_id` | BIGINT | Foreign key to users (cascade delete) |
+| `first_name` | VARCHAR | Chef's first name |
+| `last_name` | VARCHAR | Chef's last name |
+| `specialty` | VARCHAR | Culinary specialty |
+| `description` | TEXT | Chef biography |
+| `area` | ENUM | Kitchen area assignment |
+| `image` | VARCHAR | Chef profile image |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+**Kitchen Areas:**
+- `preparacion` - Preparation
+- `cocinar` - Cooking
+- `servir` - Serving
+- `almacenamiento` - Storage
+- `lavar` - Washing
+- `pedidos` - Order management
+
+### FoodChefs Table
+
+**Migration:** `2024_10_28_164020_create_foodchefs_table.php`
+
+Legacy table for chef information (appears to be superseded by `chefs` table).
+
+```php
+Schema::create('foodchefs', function (Blueprint $table) {
+    $table->id();
+    $table->string("name")->nullable();
+    $table->string("speciality")->nullable();
+    $table->string("image")->nullable();
+    $table->timestamps();
+});
+```
+
+### Carts Table
+
+**Migration:** `2024_10_28_190452_create_carts_table.php`
+
+Stores shopping cart items for users.
+
+```php
+Schema::create('carts', function (Blueprint $table) {
+    $table->id();
+    $table->string('user_id')->nullable();
+    $table->string('food_id')->nullable();
+    $table->string('quantity')->nullable();
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `user_id` | VARCHAR | User identifier |
+| `food_id` | VARCHAR | Food item identifier |
+| `quantity` | VARCHAR | Item quantity |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+<Warning>
+The `user_id` and `food_id` should ideally be foreign keys. Consider updating this schema for better data integrity.
+</Warning>
+
+### Orders Table
+
+**Migration:** `2024_10_28_213014_create_orders_table.php`
+
+Stores completed orders with customer information.
+
+```php
+Schema::create('orders', function (Blueprint $table) {
+    $table->id();
+    $table->string('foodname')->nullable();
+    $table->string('price')->nullable();
+    $table->string('quantity')->nullable();
+    $table->string('name')->nullable();
+    $table->string('phone')->nullable();
+    $table->string('address')->nullable();
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `foodname` | VARCHAR | Ordered food item name |
+| `price` | VARCHAR | Order price |
+| `quantity` | VARCHAR | Order quantity |
+| `name` | VARCHAR | Customer name |
+| `phone` | VARCHAR | Customer phone |
+| `address` | VARCHAR | Delivery address |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+### Tables Table
+
+**Migration:** `2024_11_19_052951_create_tables_table.php`
+
+Manages restaurant table information.
+
+```php
+Schema::create('tables', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->string('number')->unique();
+    $table->enum('type', ['terraza', 'interior', 'exterior']);
+    $table->enum('status', ['disponible', 'ocupada', 'reservada'])->default('disponible');
+    $table->integer('seats');
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `name` | VARCHAR | Table name/identifier |
+| `number` | VARCHAR | Unique table number |
+| `type` | ENUM | Location: `terraza`, `interior`, `exterior` |
+| `status` | ENUM | Status: `disponible`, `ocupada`, `reservada` |
+| `seats` | INTEGER | Number of seats |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+### Reservations Table
+
+**Migration:** `2024_11_19_054054_create_tables_reservations.php`
+
+Manages table reservations.
+
+```php
+Schema::create('reservations', function (Blueprint $table) {
+    $table->id();
+    $table->string('name')->nullable();
+    $table->string('email')->nullable();
+    $table->string('phone')->nullable();
+    $table->string('guest')->nullable();
+    $table->string('date')->nullable();
+    $table->string('time')->nullable();
+    $table->string('message')->nullable();
+    $table->unsignedBigInteger('table_id')->nullable();
+    $table->foreign('table_id')->references('id')->on('tables')->onDelete('set null');
+    $table->timestamps();
+});
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT | Primary key |
+| `name` | VARCHAR | Customer name |
+| `email` | VARCHAR | Customer email |
+| `phone` | VARCHAR | Customer phone |
+| `guest` | VARCHAR | Number of guests |
+| `date` | VARCHAR | Reservation date |
+| `time` | VARCHAR | Reservation time |
+| `message` | VARCHAR | Special requests |
+| `table_id` | BIGINT | Foreign key to tables |
+| `timestamps` | TIMESTAMP | Created/updated timestamps |
+
+### Permission Tables
+
+**Migration:** `2024_10_30_191947_create_permission_tables.php`
+
+Created by Spatie Laravel Permission package for role-based access control.
+
+Creates the following tables:
+- `permissions` - Available permissions
+- `roles` - User roles
+- `model_has_permissions` - Direct permission assignments
+- `model_has_roles` - User role assignments
+- `role_has_permissions` - Permission-role relationships
+
+## Migration Commands
+
+### Running Migrations
+
+<CodeGroup>
+```bash Fresh Migration
+# Drop all tables and re-run migrations
+php artisan migrate:fresh
+```
+
+```bash Production Migration
+# Run pending migrations in production
+php artisan migrate --force
+```
+
+```bash Migration Status
+# Check which migrations have run
+php artisan migrate:status
+```
+
+```bash Rollback
+# Rollback the last migration batch
+php artisan migrate:rollback
+
+# Rollback specific steps
+php artisan migrate:rollback --step=2
+```
+</CodeGroup>
+
+### Seeding Data
+
+```bash
+# Run database seeders
+php artisan db:seed
+
+# Run specific seeder
+php artisan db:seed --class=UserSeeder
+
+# Fresh migration with seed
+php artisan migrate:fresh --seed
+```
+
+## Database Relationships
+
+### Entity Relationship Diagram
+
+```
+users (1) ──→ (1) chefs
+  ↓
+  └──→ (n) sessions
+
+categories (1) ──→ (n) food
+
+tables (1) ──→ (n) reservations
+
+users (1) ──→ (n) carts ←── (n) food
+users (1) ──→ (n) orders
+```
+
+### Key Relationships
+
+1. **User → Chef**: One-to-one relationship with cascade delete
+2. **Category → Food**: One-to-many with set null on delete
+3. **Table → Reservations**: One-to-many with set null on delete
+4. **User → Cart**: One-to-many (implicit)
+5. **User → Orders**: One-to-many (implicit)
+
+## Backup and Restore
+
+### Backup Database
+
+```bash
+# Full database backup
+mysqldump -u root -p restaurante > backup.sql
+
+# With timestamp
+mysqldump -u root -p restaurante > backup-$(date +%Y%m%d-%H%M%S).sql
+
+# Compressed backup
+mysqldump -u root -p restaurante | gzip > backup.sql.gz
+```
+
+### Restore Database
+
+```bash
+# Restore from backup
+mysql -u root -p restaurante < backup.sql
+
+# Restore compressed backup
+gunzip < backup.sql.gz | mysql -u root -p restaurante
+```
+
+## Performance Optimization
+
+### Indexes
+
+The migrations include these indexes:
+- Primary keys on all `id` columns
+- Unique index on `users.email`
+- Unique index on `tables.number`
+- Index on `sessions.user_id`
+- Index on `sessions.last_activity`
+
+### Query Optimization Tips
+
+```bash
+# Analyze database performance
+php artisan telescope:install  # For query monitoring
+
+# Enable query logging
+DB::enableQueryLog();
+// Run your queries
+DD(DB::getQueryLog());
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<Warning>
+**"Access denied" Error:**
+- Verify database credentials in `.env`
+- Ensure MySQL user has proper permissions
+- Check if database exists
+</Warning>
+
+```bash
+# Grant permissions to database user
+mysql -u root -p
+```
+
+```sql
+GRANT ALL PRIVILEGES ON restaurante.* TO 'your_user'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+### Migration Errors
+
+```bash
+# Clear cached configuration
+php artisan config:clear
+
+# Reset migrations (CAUTION: Deletes all data)
+php artisan migrate:reset
+
+# Refresh migrations with seed
+php artisan migrate:refresh --seed
+```
+
+### Foreign Key Constraints
+
+If you encounter foreign key errors:
+
+```bash
+# Drop all tables and re-migrate
+php artisan migrate:fresh
+
+# Or manually disable foreign key checks
+SET FOREIGN_KEY_CHECKS=0;
+-- Drop tables
+SET FOREIGN_KEY_CHECKS=1;
+```
+
+## Best Practices
+
+<Note>
+1. Always backup before running migrations in production
+2. Test migrations in development environment first
+3. Use `--force` flag for production migrations
+4. Never edit migration files after they've been run
+5. Use seeders for test data, not migrations
+6. Keep migrations small and focused
+7. Use proper foreign key constraints for data integrity
+</Note>
+
+## Next Steps
+
+- [Configure environment variables](/guides/configuration)
+- [Deploy to production](/guides/deployment)
+- [Set up Docker](/guides/docker)

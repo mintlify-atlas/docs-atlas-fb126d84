@@ -1,0 +1,329 @@
+---
+title: 'API Overview'
+description: 'Comprehensive overview of the Restaurant Management System API architecture, endpoints, and response formats'
+icon: 'book'
+---
+
+## Introduction
+
+The Restaurant Management System is built on **Laravel 11** and provides a comprehensive web application with role-based access control. The system manages restaurant operations including menu management, table reservations, orders, and staff coordination.
+
+<Note>
+  This application uses **Laravel Sanctum** for authentication with **Jetstream** integration. While primarily a web application, it follows RESTful conventions and can be extended for API usage.
+</Note>
+
+## Architecture
+
+The application follows Laravel's MVC architecture with the following key components:
+
+- **Authentication**: Laravel Sanctum + Jetstream (Livewire stack)
+- **Authorization**: Role-based access control using Spatie Laravel Permission + custom middleware
+- **Database**: Eloquent ORM with migrations
+- **Frontend**: Blade templates with Livewire components
+
+### Supported User Roles
+
+The system supports four distinct user roles:
+
+1. **Guest** - Public access to menu browsing
+2. **Customer** (authenticated) - Can place orders, manage cart, make reservations
+3. **Chef** - Manages food menu items and their profile
+4. **Mesero** (Waiter) - Manages tables and reservations
+5. **Admin** - Full system access including user management, orders, and reports
+
+## Response Formats
+
+All responses follow standard Laravel conventions:
+
+### Successful Responses
+
+**Web Routes**: Returns rendered HTML views or redirects with session flash messages:
+
+```php
+// Success redirect
+return redirect()->route('home')->with('success', 'Order created successfully. ID: 123');
+
+// View response
+return view('comidaview', compact('foods', 'count'));
+```
+
+**JSON Responses** (for API-compatible endpoints):
+
+```json
+{
+  "success": true,
+  "message": "Operation completed successfully",
+  "data": {
+    "id": 1,
+    "name": "Example"
+  }
+}
+```
+
+### Error Responses
+
+**Validation Errors** (HTTP 422):
+
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "email": [
+      "The email field is required."
+    ],
+    "password": [
+      "The password must be at least 8 characters."
+    ]
+  }
+}
+```
+
+**Authorization Errors** (HTTP 403):
+
+```json
+{
+  "message": "No tienes permiso para acceder a esta página. (sin-rol)"
+}
+```
+
+**Authentication Errors** (HTTP 401):
+
+- Redirects to `/login` route for web requests
+- Returns `null` for JSON requests (expectsJson)
+
+## Endpoint Structure by Role
+
+### Public Endpoints
+
+No authentication required:
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/` | `HomeController@index` | Home page with food listings |
+| GET | `/menu` | `HomeController@comidaview` | Full menu view (paginated) |
+| GET | `/comidaview` | `HomeController@comidaview` | Alternative menu route |
+| GET | `/infocomida/{food}` | `HomeController@infocomida` | Food item details |
+
+### Authenticated Customer Endpoints
+
+Requires `auth` middleware:
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/redirects` | `HomeController@redirects` | Post-login role-based redirect |
+| GET | `/cart` | `CartController@index` | View shopping cart |
+| POST | `/cart/{food}` | `CartController@store` | Add item to cart |
+| DELETE | `/cart/{cart}` | `CartController@destroy` | Remove cart item |
+| POST | `/orderconfirm` | `HomeController@orderConfirm` | Confirm and create order |
+
+<Note>
+  Cart operations are only available to authenticated users. The cart is user-specific and persists in the database.
+</Note>
+
+### Admin Endpoints
+
+Prefix: `/admin` | Middleware: `auth`, `role:admin`
+
+#### User Management
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/admin/users` | `AdminController@user` | List all users |
+| POST | `/admin/users` | `AdminController@createUser` | Create new user |
+| POST | `/admin/users/{id}` | `AdminController@updateUser` | Update user |
+| DELETE | `/admin/users/{id}` | `AdminController@deleteuser` | Delete user |
+
+#### Food Menu Management
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/admin/foodmenu` | `AdminController@foodmenu` | List all menu items |
+| POST | `/admin/foodmenu` | `AdminController@uploadfood` | Create menu item |
+| GET | `/admin/foodmenu/{id}/edit` | `AdminController@updateview` | Edit form |
+| POST | `/admin/foodmenu/{id}` | `AdminController@update` | Update menu item |
+| DELETE | `/admin/foodmenu/{id}` | `AdminController@deletemenu` | Delete menu item |
+
+#### Chef Management
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/admin/chefs` | `AdminController@viewchef` | List all chefs |
+| POST | `/admin/chefs` | `AdminController@uploadchef` | Create chef |
+| PUT | `/admin/chefs/{id}` | `AdminController@updatechef` | Update chef |
+| DELETE | `/admin/chefs/{id}` | `AdminController@deletechef` | Delete chef |
+
+#### Table Management
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/admin/tables` | `TableController@index` | List all tables |
+| POST | `/admin/tables` | `TableController@store` | Create table |
+| PUT | `/admin/tables/{id}` | `TableController@update` | Update table |
+| DELETE | `/admin/tables/{id}` | `TableController@destroy` | Delete table |
+| POST | `/admin/tables/{id}/mark-as-used` | `TableController@markAsUsed` | Mark table as occupied |
+
+#### Reservations
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/admin/reservations` | `AdminController@viewreservation` | List reservations |
+| POST | `/admin/reservations/{reservationId}/assign-table` | `AdminController@assignTable` | Assign table to reservation |
+
+#### Orders
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/admin/orders` | `AdminController@orders` | List all orders |
+| GET | `/admin/orders/search` | `AdminController@search` | Search orders |
+
+### Chef Endpoints
+
+Prefix: `/chef` | Middleware: `auth`, `role:chef`
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/chef/profile` | `ChefController@showProfile` | View profile |
+| POST | `/chef/profile` | `ChefController@storeProfile` | Create profile |
+| POST | `/chef/profile/update` | `ChefController@updateProfile` | Update profile |
+| GET | `/chef/menu` | `ChefController@cheffoodmenu` | List menu items |
+| POST | `/chef/menu` | `ChefController@uploadfoodchef` | Create menu item |
+| GET | `/chef/menu/{id}/edit` | `ChefController@chefupdateview` | Edit form |
+| POST | `/chef/menu/{id}` | `ChefController@updatechef` | Update menu item |
+| DELETE | `/chef/menu/{id}` | `ChefController@chefdeletemenu` | Delete menu item |
+
+### Mesero (Waiter) Endpoints
+
+Prefix: `/mesero` | Middleware: `auth`, `role:mesero`
+
+| Method | Endpoint | Controller | Description |
+|--------|----------|------------|-------------|
+| GET | `/mesero/home` | View | Dashboard home |
+| GET | `/mesero/tables` | `MeseroController@viewTables` | List tables |
+| POST | `/mesero/tables` | `MeseroController@storeTable` | Create table |
+| PUT | `/mesero/tables/{id}` | `MeseroController@updateTable` | Update table |
+| DELETE | `/mesero/tables/{id}` | `MeseroController@deleteTable` | Delete table |
+| POST | `/mesero/tables/{id}/mark-as-used` | `TableController@markAsUsed` | Mark table as used |
+| GET | `/mesero/reservations` | `MeseroController@meseroviewreservation` | View reservations |
+| POST | `/mesero/reservations/{reservationId}/assign-table` | `MeseroController@assignTable` | Assign table |
+
+### Unified Admin Panel Endpoints
+
+Prefix: `/admin` | Middleware: `auth`, `role:admin,chef,mesero`
+
+<Note>
+  The unified admin panel provides a single dashboard accessible to admin, chef, and mesero roles with role-specific permissions enforced at the route level.
+</Note>
+
+| Method | Endpoint | Roles | Controller | Description |
+|--------|----------|-------|------------|-------------|
+| GET | `/admin/dashboard` | admin, chef, mesero | `Admin\DashboardController@index` | Main dashboard |
+| Resource | `/admin/users` | admin | `Admin\UserController` | User CRUD |
+| Resource | `/admin/chefs` | admin | `Admin\ChefController` | Chef CRUD |
+| Resource | `/admin/foods` | admin, chef | `Admin\FoodController` | Food menu CRUD |
+| Resource | `/admin/tables` | admin, mesero | `Admin\TableController` | Table CRUD |
+| POST | `/admin/tables/{table}/mark-as-used` | admin, mesero | `Admin\TableController@markAsUsed` | Mark table used |
+| GET | `/admin/reservations` | admin, mesero | `Admin\ReservationController@index` | List reservations |
+| POST | `/admin/reservations/{reservation}/assign-table` | admin, mesero | `Admin\ReservationController@assignTable` | Assign table |
+| DELETE | `/admin/reservations/{reservation}` | admin, mesero | `Admin\ReservationController@destroy` | Delete reservation |
+| GET | `/admin/orders` | admin | `Admin\OrderController@index` | List orders |
+| GET | `/admin/orders/{order}` | admin | `Admin\OrderController@show` | View order |
+| GET/POST/etc | `/admin/profile` | admin, chef | `Admin\ProfileController` | Profile management |
+
+## Order Confirmation Format
+
+The `/orderconfirm` endpoint (routes/web.php:44) accepts two payload formats:
+
+### Recommended Format
+
+```json
+{
+  "name": "John Doe",
+  "phone": "+1234567890",
+  "address": "123 Main St",
+  "items": [
+    {
+      "food_id": 1,
+      "quantity": 2
+    },
+    {
+      "food_id": 3,
+      "quantity": 1
+    }
+  ]
+}
+```
+
+### Legacy Format
+
+```http
+POST /orderconfirm
+
+name=John Doe
+phone=+1234567890
+address=123 Main St
+foodname[]=Pizza
+foodname[]=Burger
+price[]=15.99
+price[]=12.99
+quantity[]=2
+quantity[]=1
+```
+
+<Warning>
+  The legacy format is maintained for backward compatibility but the structured JSON format is recommended for all new integrations.
+</Warning>
+
+## Route Model Binding
+
+The application uses Laravel's route model binding extensively:
+
+```php
+// Automatic model resolution
+Route::get('/infocomida/{food}', [HomeController::class, 'infocomida']);
+
+// Controller receives Food model instance
+public function infocomida(Food $food)
+{
+    return view('infocomida', compact('food'));
+}
+```
+
+## Pagination
+
+List endpoints return paginated results:
+
+- **Home page**: 12 items per page (routes/web.php:25)
+- **Menu view**: 24 items per page (routes/web.php:69)
+- Standard Laravel pagination links included in views
+
+## CSRF Protection
+
+All POST, PUT, PATCH, and DELETE requests require CSRF token validation:
+
+```html
+<form method="POST" action="/cart/1">
+    @csrf
+    <!-- form fields -->
+</form>
+```
+
+<Note>
+  CSRF protection is enforced by `App\Http\Middleware\VerifyCsrfToken` (config/sanctum.php:80)
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Learn about Laravel Sanctum authentication, role-based access, and middleware
+  </Card>
+  <Card title="Admin Controller" icon="user-shield" href="/api/controllers/admin">
+    Detailed documentation for administrator endpoints
+  </Card>
+  <Card title="Chef Controller" icon="hat-chef" href="/api/controllers/chef">
+    Chef-specific menu management operations
+  </Card>
+  <Card title="Waiter Controller" icon="bell-concierge" href="/api/controllers/waiter">
+    Waiter endpoints for tables and reservations
+  </Card>
+</CardGroup>

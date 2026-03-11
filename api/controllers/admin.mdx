@@ -1,0 +1,765 @@
+---
+title: 'AdminController'
+description: 'Main admin controller for managing users, foods, reservations, tables, chefs, and orders'
+icon: 'user-shield'
+---
+
+## Overview
+
+The `AdminController` is the primary administrative controller handling CRUD operations for users, menu items, reservations, tables, chefs, and orders.
+
+**Location:** `app/Http/Controllers/AdminController.php`
+
+**Route Prefix:** `/admin`
+
+**Middleware:** `auth`, `role:admin`
+
+---
+
+## User Management
+
+### user()
+
+Display all users in the system.
+
+**Route:** `GET /admin/users`
+
+**Route Name:** `admin.users`
+
+**Implementation:**
+
+```php
+public function user()
+{
+    $users = User::all();
+    return view("admin.users", compact("users"));
+}
+```
+
+<ResponseField name="users" type="Collection">
+  Collection of all User models
+</ResponseField>
+
+---
+
+### createUser()
+
+Create a new user in the system.
+
+**Route:** `POST /admin/users`
+
+**Route Name:** `admin.users.store`
+
+**Implementation:**
+
+```php
+public function createUser(Request $request)
+{
+    User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'usertype' => $request->usertype,
+        'password' => Hash::make($request->password),
+    ]);
+
+    return redirect()->route('admin.user')->with('success', 'Usuario creado exitosamente.');
+}
+```
+
+**Request Parameters:**
+
+<ParamField path="name" type="string" required>
+  User's full name
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  User's email address
+</ParamField>
+
+<ParamField path="usertype" type="string" required>
+  User type/role (admin, chef, mesero, user)
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  User's password (will be hashed)
+</ParamField>
+
+---
+
+### updateUser()
+
+Update an existing user's information.
+
+**Route:** `POST /admin/users/{id}`
+
+**Route Name:** `admin.users.update`
+
+**Implementation:**
+
+```php
+public function updateUser(Request $request, $id)
+{
+    $user = User::findOrFail($id);
+    $user->fill($request->only('name', 'email', 'usertype'));
+
+    if ($request->password) {
+        $user->password = Hash::make($request->password);
+    }
+
+    $user->save();
+    return redirect()->route('admin.user')->with('success', 'Usuario actualizado correctamente.');
+}
+```
+
+**Parameters:**
+
+<ParamField path="id" type="integer" required>
+  User ID to update
+</ParamField>
+
+<ParamField path="name" type="string">
+  User's full name
+</ParamField>
+
+<ParamField path="email" type="string">
+  User's email address
+</ParamField>
+
+<ParamField path="usertype" type="string">
+  User type/role
+</ParamField>
+
+<ParamField path="password" type="string">
+  New password (optional - only updates if provided)
+</ParamField>
+
+---
+
+### deleteuser()
+
+Delete a user from the system.
+
+**Route:** `DELETE /admin/users/{id}`
+
+**Route Name:** `admin.users.delete`
+
+**Implementation:**
+
+```php
+public function deleteuser($id)
+{
+    User::findOrFail($id)->delete();
+    return redirect()->back()->with('success', 'Usuario eliminado correctamente.');
+}
+```
+
+<ParamField path="id" type="integer" required>
+  User ID to delete
+</ParamField>
+
+---
+
+## Menu Management
+
+### foodmenu()
+
+Display all food menu items with categories.
+
+**Route:** `GET /admin/foodmenu`
+
+**Route Name:** `admin.foodmenu`
+
+**Implementation:**
+
+```php
+public function foodmenu()
+{
+    $foods = Food::all();
+    $categories = Category::all();
+    return view("admin.foodmenu", compact('foods', 'categories'));
+}
+```
+
+<ResponseField name="foods" type="Collection">
+  Collection of all Food models
+</ResponseField>
+
+<ResponseField name="categories" type="Collection">
+  Collection of all Category models
+</ResponseField>
+
+---
+
+### uploadfood()
+
+Create a new food menu item.
+
+**Route:** `POST /admin/foodmenu`
+
+**Route Name:** `admin.foodmenu.store`
+
+**Implementation:**
+
+```php
+public function uploadfood(Request $request)
+{
+    $food = $this->saveFoodData(new Food(), $request);
+    return redirect()->route('foodmenu')->with('success', 'Menú agregado con éxito.');
+}
+
+protected function saveFoodData(Food $food, Request $request)
+{
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $food->image = time() . '.' . $image->getClientOriginalExtension();
+        $image->move('foodimage', $food->image);
+    }
+
+    $food->fill($request->only([
+        'title', 'price', 'description', 'ingredients', 'proteins', 'calories', 'size', 'category_id'
+    ]));
+
+    $food->save();
+    return $food;
+}
+```
+
+**Request Parameters:**
+
+<ParamField path="title" type="string" required>
+  Food item name
+</ParamField>
+
+<ParamField path="price" type="decimal" required>
+  Food price
+</ParamField>
+
+<ParamField path="description" type="text" required>
+  Food description
+</ParamField>
+
+<ParamField path="ingredients" type="string">
+  List of ingredients
+</ParamField>
+
+<ParamField path="proteins" type="string">
+  Protein content information
+</ParamField>
+
+<ParamField path="calories" type="integer">
+  Calorie count
+</ParamField>
+
+<ParamField path="size" type="string">
+  Portion size
+</ParamField>
+
+<ParamField path="category_id" type="integer">
+  Category foreign key
+</ParamField>
+
+<ParamField path="image" type="file">
+  Food image file
+</ParamField>
+
+---
+
+### updateview()
+
+Show the edit form for a food item.
+
+**Route:** `GET /admin/foodmenu/{id}/edit`
+
+**Route Name:** `admin.foodmenu.edit`
+
+**Implementation:**
+
+```php
+public function updateview($id)
+{
+    $food = Food::findOrFail($id);
+    $categories = Category::all();
+    return view("admin.updateview", compact('food', 'categories'));
+}
+```
+
+---
+
+### update()
+
+Update an existing food menu item.
+
+**Route:** `POST /admin/foodmenu/{id}`
+
+**Route Name:** `admin.foodmenu.update`
+
+**Implementation:**
+
+```php
+public function update(Request $request, $id)
+{
+    $food = Food::findOrFail($id);
+    $this->saveFoodData($food, $request);
+    return redirect()->route('foodmenu')->with('success', 'Menú actualizado con éxito.');
+}
+```
+
+---
+
+### deletemenu()
+
+Delete a food menu item.
+
+**Route:** `DELETE /admin/foodmenu/{id}`
+
+**Route Name:** `admin.foodmenu.delete`
+
+**Implementation:**
+
+```php
+public function deletemenu($id)
+{
+    Food::findOrFail($id)->delete();
+    return redirect()->back()->with('success', 'Menú eliminado correctamente.');
+}
+```
+
+---
+
+## Reservation Management
+
+### reservation()
+
+Create a new reservation.
+
+**Implementation:**
+
+```php
+public function reservation(Request $request)
+{
+    Reservation::create($request->only('name', 'email', 'phone', 'guest', 'date', 'time', 'message'));
+    return redirect()->back()->with('success', 'Reservación creada correctamente.');
+}
+```
+
+**Request Parameters:**
+
+<ParamField path="name" type="string" required>
+  Guest name
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  Guest email
+</ParamField>
+
+<ParamField path="phone" type="string" required>
+  Contact phone
+</ParamField>
+
+<ParamField path="guest" type="integer" required>
+  Number of guests
+</ParamField>
+
+<ParamField path="date" type="date" required>
+  Reservation date
+</ParamField>
+
+<ParamField path="time" type="time" required>
+  Reservation time
+</ParamField>
+
+<ParamField path="message" type="text">
+  Special requests or notes
+</ParamField>
+
+---
+
+### viewreservation()
+
+Display all reservations with available tables.
+
+**Route:** `GET /admin/reservations`
+
+**Route Name:** `admin.reservations`
+
+**Implementation:**
+
+```php
+public function viewreservation()
+{
+    $reservations = Reservation::with('table')->get();
+    $tables = Table::where('status', 'disponible')->get();
+    return view('admin.adminreservation', compact('reservations', 'tables'));
+}
+```
+
+---
+
+### assignTable()
+
+Assign a table to a reservation. Validates that guest count matches table seats.
+
+**Route:** `POST /admin/reservations/{reservationId}/assign-table`
+
+**Route Name:** `admin.reservations.assign`
+
+**Implementation:**
+
+```php
+public function assignTable(Request $request, $reservationId)
+{
+    $reservation = Reservation::findOrFail($reservationId);
+    $table = Table::findOrFail($request->table_id);
+
+    if ($reservation->guest == $table->seats) {
+        $reservation->table_id = $table->id;
+        $reservation->save();
+
+        $table->status = 'reservada';
+        $table->save();
+
+        return response()->json([
+            'success' => true,
+            'table_name' => $table->name,
+            'user_name' => $reservation->name,
+        ]);
+    }
+
+    return response()->json([
+        'success' => false,
+        'message' => 'El número de invitados no coincide con los asientos de la mesa.',
+    ]);
+}
+```
+
+**Request:**
+
+<ParamField path="table_id" type="integer" required>
+  ID of the table to assign
+</ParamField>
+
+**JSON Response (Success):**
+
+```json
+{
+  "success": true,
+  "table_name": "Mesa 5",
+  "user_name": "John Doe"
+}
+```
+
+**JSON Response (Error):**
+
+```json
+{
+  "success": false,
+  "message": "El número de invitados no coincide con los asientos de la mesa."
+}
+```
+
+---
+
+## Table Management
+
+### viewTables()
+
+Display all tables.
+
+**Route:** `GET /admin/tables`
+
+**Route Name:** `admin.tables`
+
+**Implementation:**
+
+```php
+public function viewTables()
+{
+    $tables = Table::all();
+    return view('admin.adminmesas', compact('tables'));
+}
+```
+
+---
+
+### storeTable()
+
+Create a new table.
+
+**Route:** `POST /admin/tables`
+
+**Route Name:** `admin.tables.store`
+
+**Implementation:**
+
+```php
+public function storeTable(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number',
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string',
+    ]);
+
+    Table::create($request->all());
+    return redirect()->route('adminmesas')->with('success', 'Mesa agregada correctamente.');
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="name" type="string" required>
+  Table name (max 255 characters)
+</ParamField>
+
+<ParamField path="number" type="integer" required>
+  Unique table number
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Table type (e.g., interior, exterior, VIP)
+</ParamField>
+
+<ParamField path="seats" type="integer" required>
+  Number of seats
+</ParamField>
+
+<ParamField path="status" type="string" required>
+  Table status
+</ParamField>
+
+---
+
+### updateTable()
+
+Update an existing table.
+
+**Route:** `PUT /admin/tables/{id}`
+
+**Route Name:** `admin.tables.update`
+
+**Implementation:**
+
+```php
+public function updateTable(Request $request, $id)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number,' . $id,
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string|in:available,occupied,reservada',
+    ]);
+
+    $table = Table::findOrFail($id);
+    $table->fill($request->only('name', 'number', 'type', 'seats', 'status'));
+    $table->save();
+
+    return redirect()->route('adminmesas')->with('success', 'Mesa actualizada correctamente.');
+}
+```
+
+**Status Values:**
+- `available` - Table is available
+- `occupied` - Table is currently in use
+- `reservada` - Table is reserved
+
+---
+
+### deleteTable()
+
+Delete a table.
+
+**Route:** `DELETE /admin/tables/{id}`
+
+**Route Name:** `admin.tables.delete`
+
+**Implementation:**
+
+```php
+public function deleteTable($id)
+{
+    Table::findOrFail($id)->delete();
+    return redirect()->route('adminmesas')->with('success', 'Mesa eliminada correctamente.');
+}
+```
+
+---
+
+## Chef Management
+
+### viewchef()
+
+Display all chefs.
+
+**Route:** `GET /admin/chefs`
+
+**Route Name:** `admin.chefs`
+
+**Implementation:**
+
+```php
+public function viewchef()
+{
+    $foodchefs = Foodchef::all();
+    $chefs = Chef::all();
+    return view("admin.adminchef", compact('foodchefs','chefs'));
+}
+```
+
+---
+
+### uploadchef()
+
+Create a new chef profile.
+
+**Route:** `POST /admin/chefs`
+
+**Route Name:** `admin.chefs.store`
+
+**Implementation:**
+
+```php
+public function uploadchef(Request $request)
+{
+    $this->saveChefData(new Foodchef(), $request);
+    return redirect()->back()->with('success', 'Chef agregado correctamente.');
+}
+
+protected function saveChefData($chef, Request $request)
+{
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $imagename = time() . '.' . $image->getClientOriginalExtension();
+        $image->move('chefimage', $imagename);
+        $chef->image = $imagename;
+    }
+
+    $chef->fill($request->only('name','speciality'));
+    $chef->save();
+    return $chef;
+}
+```
+
+---
+
+### updateChef()
+
+Update an existing chef profile.
+
+**Route:** `PUT /admin/chefs/{id}`
+
+**Route Name:** `admin.chefs.update`
+
+**Implementation:**
+
+```php
+public function updateChef(Request $request, $id)
+{
+    $chef = Chef::findOrFail($id);
+    if ($request->hasFile('image')) {
+        $chef->image = $request->file('image')->store('chefs', 'public');
+    }
+    $chef->fill($request->only('first_name','last_name','specialty','description','area'));
+    $chef->save();
+
+    return redirect()->back()->with('success', 'Perfil actualizado correctamente.');
+}
+```
+
+**Request Parameters:**
+
+<ParamField path="first_name" type="string">
+  Chef's first name
+</ParamField>
+
+<ParamField path="last_name" type="string">
+  Chef's last name
+</ParamField>
+
+<ParamField path="specialty" type="string">
+  Chef's specialty
+</ParamField>
+
+<ParamField path="description" type="text">
+  Chef bio/description
+</ParamField>
+
+<ParamField path="area" type="string">
+  Work area (preparacion, cocinar, servir, etc.)
+</ParamField>
+
+<ParamField path="image" type="file">
+  Chef profile image
+</ParamField>
+
+---
+
+### deleteChef()
+
+Delete a chef.
+
+**Route:** `DELETE /admin/chefs/{id}`
+
+**Route Name:** `admin.chefs.delete`
+
+**Implementation:**
+
+```php
+public function deleteChef($id)
+{
+    $chef = Chef::find($id);
+    if ($chef) {
+        $chef->delete();
+        return redirect()->back()->with('success', 'Chef eliminado correctamente.');
+    }
+    return redirect()->back()->with('error', 'Chef no encontrado.');
+}
+```
+
+---
+
+## Order Management
+
+### orders()
+
+Display all orders.
+
+**Route:** `GET /admin/orders`
+
+**Route Name:** `admin.orders`
+
+**Implementation:**
+
+```php
+public function orders()
+{
+    $orders = Order::all();
+    return view('admin.orders', compact('orders'));
+}
+```
+
+---
+
+### search()
+
+Search orders by customer name.
+
+**Route:** `GET /admin/orders/search`
+
+**Route Name:** `admin.orders.search`
+
+**Implementation:**
+
+```php
+public function search(Request $request)
+{
+    $orders = Order::where('name','LIKE','%'.$request->search.'%')->get();
+    return view('admin.orders', compact('orders'));
+}
+```
+
+<ParamField path="search" type="string" required>
+  Search term to filter orders by customer name
+</ParamField>

@@ -1,97 +1,96 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Restaurant Management System"
+description: "A full-stack restaurant management platform with multi-role authentication, menu management, table reservations, and order processing"
 ---
 
-## Setting up
+<div className="flex items-center justify-center py-12">
+  <div className="text-center max-w-4xl">
+    <h1 className="text-5xl font-bold mb-6" style={{ color: "#1a1a1a" }}>
+      Restaurant Management System
+    </h1>
+    <p className="text-xl mb-8" style={{ color: "#1a1a1a" }}>
+      A comprehensive Laravel-based platform for managing all aspects of your restaurant operations
+    </p>
+    <div className="flex gap-4 justify-center">
+      <a 
+        href="/quickstart" 
+        className="px-6 py-3 rounded font-semibold"
+        style={{ backgroundColor: "#1a1a1a", color: "#ffffff" }}
+      >
+        Get Started
+      </a>
+      <a 
+        href="https://github.com/CristianParadaLopez/Restaurante-laravel-11"
+        className="px-6 py-3 rounded font-semibold border"
+        style={{ backgroundColor: "#ffffff", color: "#1a1a1a", borderColor: "#1a1a1a" }}
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## Key Features
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Multi-Role Authentication" icon="users" href="/features/authentication">
+    Role-based access control for Admin, Chef, Waiter, and Customer roles
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Menu Management" icon="utensils" href="/features/menu-management">
+    Complete menu system with categories, nutritional information, and pricing
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Table Reservations" icon="calendar-check" href="/features/reservations">
+    Automated reservation system with table assignment and status tracking
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Order Processing" icon="cart-shopping" href="/features/orders">
+    Shopping cart, order management, and order history for customers
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Get Started
 
-Everything you need to create world-class documentation.
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up the restaurant management system locally
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get your first restaurant up and running
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Configure your environment and settings
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## User Roles
 
-## Need inspiration?
+<CardGroup cols={2}>
+  <Card title="Admin Dashboard" icon="shield-halved" href="/roles/admin">
+    Full system access with user, menu, and order management
+  </Card>
+  <Card title="Chef Portal" icon="hat-chef" href="/roles/chef">
+    Menu creation and chef profile management
+  </Card>
+  <Card title="Waiter Interface" icon="clipboard-list" href="/roles/waiter">
+    Table management and reservation handling
+  </Card>
+  <Card title="Customer Experience" icon="user" href="/roles/customer">
+    Browse menu, place orders, and make reservations
+  </Card>
+</CardGroup>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Technical Documentation
+
+<CardGroup cols={2}>
+  <Card title="API Overview" icon="code" href="/api/overview">
+    Explore the complete API reference
+  </Card>
+  <Card title="Database Setup" icon="database" href="/guides/database-setup">
+    Configure your database and run migrations
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/guides/docker">
+    Deploy using Docker containers
+  </Card>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn about authentication and authorization
+  </Card>
+</CardGroup>

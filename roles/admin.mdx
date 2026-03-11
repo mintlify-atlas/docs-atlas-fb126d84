@@ -1,0 +1,440 @@
+---
+title: 'Admin Role'
+description: 'Complete guide to administrator permissions, features, and workflows in the Restaurant Management System'
+icon: 'user-shield'
+---
+
+## Overview
+
+The **Admin** role has full access to all system features and manages the entire restaurant operation. Admins can manage users, menu items, chefs, tables, reservations, and orders through a unified dashboard.
+
+<Info>
+Admin access is protected by the `RoleMiddleware` which validates the user's role before granting access to administrative routes.
+</Info>
+
+## Role-Based Access Control
+
+The admin role is enforced through Laravel middleware:
+
+```php
+// routes/web.php - Line 56
+Route::prefix('admin')->name('admin.')
+    ->middleware(['auth','role:admin,chef,mesero'])
+    ->group(function () {
+        // Admin-only routes
+        Route::middleware('role:admin')->group(function () {
+            Route::resource('users', AdminUserController::class);
+            Route::resource('chefs', AdminChefController::class);
+            Route::get('orders', [AdminOrderController::class, 'index']);
+        });
+    });
+```
+
+### Middleware Implementation
+
+The `RoleMiddleware` validates admin access:
+
+```php
+// app/Http/Middleware/RoleMiddleware.php - Lines 21-60
+public function handle(Request $request, Closure $next, ...$roles)
+{
+    $user = Auth::user();
+    
+    if (! $user) {
+        abort(403, 'No tienes permiso para acceder a esta página.');
+    }
+    
+    // Support both Spatie roles and usertype column
+    if (method_exists($user, 'hasAnyRole')) {
+        if ($user->hasAnyRole($normalized)) {
+            return $next($request);
+        }
+    } else {
+        if (in_array($user->usertype, $normalized, true)) {
+            return $next($request);
+        }
+    }
+    
+    abort(403, 'No tienes permiso para acceder a esta página.');
+}
+```
+
+## Admin Dashboard
+
+The admin dashboard provides an overview of the entire system:
+
+```php
+// app/Http/Controllers/Admin/DashboardController.php - Lines 14-29
+public function index()
+{
+    $usersCount = User::count();
+    $foodsCount = Food::count();
+    $ordersCount = Order::count();
+    $reservationsCount = Reservation::count();
+    $tablesCount = Table::count();
+
+    return view('admin.dashboard', compact(
+        'usersCount',
+        'foodsCount',
+        'ordersCount',
+        'reservationsCount',
+        'tablesCount'
+    ));
+}
+```
+
+**Dashboard Route:**
+```php
+GET /admin/dashboard
+```
+
+## User Management
+
+<CardGroup cols={2}>
+  <Card title="View Users" icon="users">
+    Access and manage all system users with pagination support.
+  </Card>
+  <Card title="Create Users" icon="user-plus">
+    Create new users with specific roles (admin, chef, mesero, customer).
+  </Card>
+  <Card title="Update Users" icon="pen-to-square">
+    Modify user details, email, and role assignments.
+  </Card>
+  <Card title="Delete Users" icon="user-xmark">
+    Remove users from the system permanently.
+  </Card>
+</CardGroup>
+
+### User Routes
+
+```php
+// routes/admin.php - Lines 10-13
+Route::get('/users', [AdminController::class, 'user'])->name('admin.users');
+Route::post('/users', [AdminController::class, 'createUser'])->name('admin.users.store');
+Route::post('/users/{id}', [AdminController::class, 'updateUser'])->name('admin.users.update');
+Route::delete('/users/{id}', [AdminController::class, 'deleteuser'])->name('admin.users.delete');
+```
+
+### Creating a User
+
+<Steps>
+  <Step title="Navigate to User Management">
+    Access the users section from the admin dashboard at `/admin/users`.
+  </Step>
+  <Step title="Fill User Details">
+    Provide name, email, password, and select the user role (admin, chef, mesero, or user).
+  </Step>
+  <Step title="Submit Form">
+    The system creates the user with hashed password and assigns the role.
+  </Step>
+</Steps>
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 46-56
+public function createUser(Request $request)
+{
+    User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'usertype' => $request->usertype,
+        'password' => Hash::make($request->password),
+    ]);
+
+    return redirect()->route('admin.user')->with('success', 'Usuario creado exitosamente.');
+}
+```
+
+## Menu Management
+
+Admins have full control over the restaurant menu, including creating, updating, and deleting food items.
+
+### Menu Routes
+
+```php
+// routes/admin.php - Lines 16-20
+Route::get('/foodmenu', [AdminController::class, 'foodmenu'])->name('admin.foodmenu');
+Route::post('/foodmenu', [AdminController::class, 'uploadfood'])->name('admin.foodmenu.store');
+Route::get('/foodmenu/{id}/edit', [AdminController::class, 'updateview'])->name('admin.foodmenu.edit');
+Route::post('/foodmenu/{id}', [AdminController::class, 'update'])->name('admin.foodmenu.update');
+Route::delete('/foodmenu/{id}', [AdminController::class, 'deletemenu'])->name('admin.foodmenu.delete');
+```
+
+### Adding Menu Items
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 68-72
+public function uploadfood(Request $request)
+{
+    $food = $this->saveFoodData(new Food(), $request);
+    return redirect()->route('foodmenu')->with('success', 'Menú agregado con éxito.');
+}
+
+// Lines 95-109
+protected function saveFoodData(Food $food, Request $request)
+{
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $food->image = time() . '.' . $image->getClientOriginalExtension();
+        $image->move('foodimage', $food->image);
+    }
+
+    $food->fill($request->only([
+        'title', 'price', 'description', 'ingredients', 
+        'proteins', 'calories', 'size', 'category_id'
+    ]));
+
+    $food->save();
+    return $food;
+}
+```
+
+## Chef Management
+
+Admins can manage chef profiles and assignments.
+
+### Chef Routes
+
+```php
+// routes/admin.php - Lines 23-26
+Route::get('/chefs', [AdminController::class, 'viewchef'])->name('admin.chefs');
+Route::post('/chefs', [AdminController::class, 'uploadchef'])->name('admin.chefs.store');
+Route::put('/chefs/{id}', [AdminController::class, 'updatechef'])->name('admin.chefs.update');
+Route::delete('/chefs/{id}', [AdminController::class, 'deletechef'])->name('admin.chefs.delete');
+```
+
+### Chef Profile Management
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 224-234
+public function updateChef(Request $request, $id)
+{
+    $chef = Chef::findOrFail($id);
+    if ($request->hasFile('image')) {
+        $chef->image = $request->file('image')->store('chefs', 'public');
+    }
+    $chef->fill($request->only('first_name','last_name','specialty','description','area'));
+    $chef->save();
+
+    return redirect()->back()->with('success', 'Perfil actualizado correctamente.');
+}
+```
+
+## Reservation Management
+
+Admins can view all reservations and assign tables to customers.
+
+### Reservation Routes
+
+```php
+// routes/admin.php - Lines 29-30
+Route::get('/reservations', [AdminController::class, 'viewreservation'])->name('admin.reservations');
+Route::post('/reservations/{reservationId}/assign-table', [AdminController::class, 'assignTable'])
+    ->name('admin.reservations.assign');
+```
+
+### Assigning Tables
+
+<Steps>
+  <Step title="View Reservations">
+    Navigate to `/admin/reservations` to see all pending reservations.
+  </Step>
+  <Step title="Select Available Table">
+    Choose a table that matches the guest count and is available.
+  </Step>
+  <Step title="Assign Table">
+    The system validates the table capacity and assigns it to the reservation.
+  </Step>
+</Steps>
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 127-150
+public function assignTable(Request $request, $reservationId)
+{
+    $reservation = Reservation::findOrFail($reservationId);
+    $table = Table::findOrFail($request->table_id);
+
+    if ($reservation->guest == $table->seats) {
+        $reservation->table_id = $table->id;
+        $reservation->save();
+
+        $table->status = 'reservada';
+        $table->save();
+
+        return response()->json([
+            'success' => true,
+            'table_name' => $table->name,
+            'user_name' => $reservation->name,
+        ]);
+    }
+
+    return response()->json([
+        'success' => false,
+        'message' => 'El número de invitados no coincide con los asientos de la mesa.',
+    ]);
+}
+```
+
+## Table Management
+
+Admins can create, update, and delete restaurant tables.
+
+### Table Routes
+
+```php
+// routes/admin.php - Lines 33-37
+Route::get('/tables', [TableController::class, 'index'])->name('admin.tables');
+Route::post('/tables', [TableController::class, 'store'])->name('admin.tables.store');
+Route::put('/tables/{id}', [TableController::class, 'update'])->name('admin.tables.update');
+Route::delete('/tables/{id}', [TableController::class, 'destroy'])->name('admin.tables.delete');
+Route::post('/tables/{id}/mark-as-used', [TableController::class, 'markAsUsed'])
+    ->name('admin.tables.used');
+```
+
+### Table Validation
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 162-173
+public function storeTable(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number',
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string',
+    ]);
+
+    Table::create($request->all());
+    return redirect()->route('adminmesas')->with('success', 'Mesa agregada correctamente.');
+}
+```
+
+## Order Management
+
+Admins can view all customer orders and search through them.
+
+### Order Routes
+
+```php
+// routes/admin.php - Lines 40-41
+Route::get('/orders', [AdminController::class, 'orders'])->name('admin.orders');
+Route::get('/orders/search', [AdminController::class, 'search'])->name('admin.orders.search');
+```
+
+### Viewing Orders
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 260-264
+public function orders()
+{
+    $orders = Order::all();
+    return view('admin.orders', compact('orders'));
+}
+```
+
+### Searching Orders
+
+```php
+// app/Http/Controllers/AdminController.php - Lines 266-270
+public function search(Request $request)
+{
+    $orders = Order::where('name','LIKE','%'.$request->search.'%')->get();
+    return view('admin.orders', compact('orders'));
+}
+```
+
+## Available Permissions
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users">
+    Create, read, update, and delete all system users
+  </Card>
+  <Card title="Menu Management" icon="utensils">
+    Full CRUD operations on food menu items
+  </Card>
+  <Card title="Chef Management" icon="hat-chef">
+    Manage chef profiles and assignments
+  </Card>
+  <Card title="Table Management" icon="table-picnic">
+    Configure and manage restaurant tables
+  </Card>
+  <Card title="Reservation Management" icon="calendar-check">
+    View and assign tables to reservations
+  </Card>
+  <Card title="Order Management" icon="receipt">
+    View all orders and search order history
+  </Card>
+</CardGroup>
+
+## Admin Workflows
+
+### Daily Operations Workflow
+
+<Steps>
+  <Step title="Check Dashboard">
+    Review system statistics: users, foods, orders, reservations, and tables.
+  </Step>
+  <Step title="Manage Reservations">
+    Assign available tables to pending reservations based on guest count.
+  </Step>
+  <Step title="Monitor Orders">
+    Review incoming orders and ensure they are being processed.
+  </Step>
+  <Step title="Update Menu">
+    Add new items, update prices, or remove unavailable dishes.
+  </Step>
+  <Step title="Manage Staff">
+    Create new user accounts for chefs and waiters, update permissions as needed.
+  </Step>
+</Steps>
+
+## Security Features
+
+<Info>
+All admin routes are protected by the `auth` and `role:admin` middleware, ensuring only authenticated administrators can access sensitive operations.
+</Info>
+
+### Password Hashing
+
+All user passwords are hashed using Laravel's `Hash::make()` method:
+
+```php
+'password' => Hash::make($request->password)
+```
+
+### Role Validation
+
+The system supports both Spatie Permission package and a simple `usertype` column for role validation, providing flexibility in implementation.
+
+## API Examples
+
+### Create a New User (Admin)
+
+```bash
+POST /admin/users
+Content-Type: application/json
+
+{
+  "name": "John Chef",
+  "email": "john@restaurant.com",
+  "password": "secure_password",
+  "usertype": "chef"
+}
+```
+
+### Assign Table to Reservation
+
+```bash
+POST /admin/reservations/5/assign-table
+Content-Type: application/json
+
+{
+  "table_id": 3
+}
+```
+
+### Search Orders
+
+```bash
+GET /admin/orders/search?search=John
+```

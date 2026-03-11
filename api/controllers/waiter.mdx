@@ -1,0 +1,543 @@
+---
+title: 'MeseroController'
+description: 'Waiter controller for managing tables and reservations'
+icon: 'bell-concierge'
+---
+
+## Overview
+
+The `MeseroController` (Waiter Controller) handles operations for restaurant waiters/servers, including table management and reservation assignment.
+
+**Location:** `app/Http/Controllers/MeseroController.php`
+
+**Route Prefix:** `/mesero`
+
+**Middleware:** `auth`, `role:mesero`
+
+---
+
+## Table Management
+
+### viewTables()
+
+Display all tables in the restaurant.
+
+**Route:** `GET /mesero/tables`
+
+**Route Name:** `mesero.tables`
+
+**Implementation:**
+
+```php
+public function viewTables()
+{
+    $tables = Table::all();
+    return view('mesero.meseromesas', compact('tables'));
+}
+```
+
+<ResponseField name="tables" type="Collection">
+  Collection of all Table models with their current status, seats, and details
+</ResponseField>
+
+---
+
+### storeTable()
+
+Create a new table.
+
+**Route:** `POST /mesero/tables`
+
+**Route Name:** `mesero.tables.store`
+
+**Implementation:**
+
+```php
+public function storeTable(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number',
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string',
+    ]);
+
+    Table::create($request->all());
+
+    return redirect()->route('meseromesas')->with('success', 'Mesa agregada correctamente.');
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="name" type="string" required>
+  Table name or identifier (max 255 characters)
+</ParamField>
+
+<ParamField path="number" type="integer" required>
+  Unique table number (must be unique across all tables)
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Table type (e.g., "interior", "exterior", "VIP", "terraza")
+</ParamField>
+
+<ParamField path="seats" type="integer" required>
+  Number of seats/capacity
+</ParamField>
+
+<ParamField path="status" type="string" required>
+  Initial table status
+</ParamField>
+
+**Request Example:**
+
+```json
+{
+  "name": "Mesa Premium 5",
+  "number": 5,
+  "type": "VIP",
+  "seats": 6,
+  "status": "disponible"
+}
+```
+
+---
+
+### updateTable()
+
+Update an existing table's information.
+
+**Route:** `PUT /mesero/tables/{id}`
+
+**Route Name:** `mesero.tables.update`
+
+**Implementation:**
+
+```php
+public function updateTable(Request $request, $id)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number,' . $id,
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string|in:available,occupied,reservada',
+    ]);
+
+    $table = Table::findOrFail($id);
+
+    // Asegúrate de actualizar campos individuales para evitar errores
+    $table->name = $request->input('name');
+    $table->number = $request->input('number');
+    $table->type = $request->input('type');
+    $table->seats = $request->input('seats');
+    $table->status = $request->input('status');
+    $table->save();
+
+    return redirect()->route('meseromesas')->with('success', 'Mesa actualizada correctamente.');
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="id" type="integer" required>
+  Table ID to update (URL parameter)
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Table name (max 255 characters)
+</ParamField>
+
+<ParamField path="number" type="integer" required>
+  Table number (unique, except for current table)
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Table type
+</ParamField>
+
+<ParamField path="seats" type="integer" required>
+  Number of seats
+</ParamField>
+
+<ParamField path="status" type="enum" required>
+  Table status - must be one of:
+  - `available` - Table is available
+  - `occupied` - Table is currently in use
+  - `reservada` - Table is reserved
+</ParamField>
+
+**Request Example:**
+
+```json
+{
+  "name": "Mesa 5 - Actualizada",
+  "number": 5,
+  "type": "interior",
+  "seats": 4,
+  "status": "occupied"
+}
+```
+
+---
+
+### deleteTable()
+
+Delete a table from the system.
+
+**Route:** `DELETE /mesero/tables/{id}`
+
+**Route Name:** `mesero.tables.delete`
+
+**Implementation:**
+
+```php
+public function deleteTable($id)
+{
+    $table = Table::findOrFail($id);
+    $table->delete();
+
+    return redirect()->route('meseromesas')->with('success', 'Mesa eliminada correctamente.');
+}
+```
+
+<ParamField path="id" type="integer" required>
+  Table ID to delete
+</ParamField>
+
+**Note:** Deleting a table will fail if it has foreign key constraints (e.g., active reservations).
+
+---
+
+## Reservation Management
+
+### meseroviewreservation()
+
+Display all reservations with available tables for assignment.
+
+**Route:** `GET /mesero/reservations`
+
+**Route Name:** `mesero.reservations`
+
+**Implementation:**
+
+```php
+public function meseroviewreservation()
+{
+    // Obtener todas las reservaciones y las mesas disponibles
+    $reservations = Reservation::with('table')->get();
+    $tables = Table::where('status', 'disponible')->get();
+
+    // Pasar las variables a la vista
+    return view('mesero.meseroreservation', compact('reservations', 'tables'));
+}
+```
+
+<ResponseField name="reservations" type="Collection">
+  Collection of all Reservation models with eager-loaded table relationships
+  
+  Each reservation includes:
+  - `id` - Reservation ID
+  - `name` - Guest name
+  - `email` - Guest email
+  - `phone` - Contact phone
+  - `guest` - Number of guests
+  - `date` - Reservation date
+  - `time` - Reservation time
+  - `message` - Special requests
+  - `table_id` - Assigned table ID (nullable)
+  - `table` - Related Table model (if assigned)
+</ResponseField>
+
+<ResponseField name="tables" type="Collection">
+  Collection of available tables (status = 'disponible') that can be assigned to reservations
+</ResponseField>
+
+---
+
+### assignTable()
+
+Assign a table to a reservation. Validates that the number of guests matches the table's seat capacity.
+
+**Route:** `POST /mesero/reservations/{reservationId}/assign-table`
+
+**Route Name:** `mesero.reservations.assign`
+
+**Implementation:**
+
+```php
+public function assignTable(Request $request, $reservationId)
+{
+    $reservation = Reservation::findOrFail($reservationId);
+    $table = Table::findOrFail($request->table_id);
+
+    // Verificar si el número de invitados coincide con el número de asientos
+    if ($reservation->guest == $table->seats) {
+        // Asignar la mesa a la reservación
+        $reservation->table_id = $table->id;
+        $reservation->save();
+
+        // Marcar la mesa como reservada
+        $table->status = 'reservada';
+        $table->save();
+
+        return response()->json([
+            'success' => true,
+            'table_name' => $table->name,
+            'user_name' => $reservation->name,
+        ]);
+    } else {
+        return response()->json([
+            'success' => false,
+            'message' => 'El número de invitados no coincide con los asientos de la mesa.',
+        ]);
+    }
+}
+```
+
+**Parameters:**
+
+<ParamField path="reservationId" type="integer" required>
+  Reservation ID to assign table to (URL parameter)
+</ParamField>
+
+<ParamField path="table_id" type="integer" required>
+  Table ID to assign (request body)
+</ParamField>
+
+**Request Example:**
+
+```json
+{
+  "table_id": 5
+}
+```
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "table_name": "Mesa VIP 5",
+  "user_name": "John Doe"
+}
+```
+
+<ResponseField name="success" type="boolean">
+  Indicates whether the assignment was successful
+</ResponseField>
+
+<ResponseField name="table_name" type="string">
+  Name of the assigned table
+</ResponseField>
+
+<ResponseField name="user_name" type="string">
+  Name of the guest who made the reservation
+</ResponseField>
+
+**Error Response:**
+
+```json
+{
+  "success": false,
+  "message": "El número de invitados no coincide con los asientos de la mesa."
+}
+```
+
+<ResponseField name="success" type="boolean">
+  False when assignment fails
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error message explaining why the assignment failed
+</ResponseField>
+
+**Business Logic:**
+
+1. Validates that the reservation exists
+2. Validates that the table exists
+3. **Critical validation:** Checks if `reservation.guest` (number of guests) exactly matches `table.seats` (table capacity)
+4. If match:
+   - Assigns `table_id` to the reservation
+   - Changes table `status` to `'reservada'`
+   - Returns success with table and guest names
+5. If no match:
+   - Returns error message
+   - No changes are made to reservation or table
+
+---
+
+## Additional Controllers
+
+The system also includes a dashboard controller for waiters:
+
+### Mesero\DashboardController
+
+**Location:** `app/Http/Controllers/Mesero/DashboardController.php`
+
+**Route:** `GET /admin/dashboard` (unified panel)
+
+**Implementation:**
+
+```php
+public function index(): View
+{
+    $tablesCount = Table::count();
+    $reservedCount = Table::where('status', 'reservada')->count();
+    $availableCount = Table::where('status', 'disponible')->count();
+    $reservationsToday = Reservation::whereDate('date', now()->toDateString())->count();
+
+    return view('mesero.meserohome', compact(
+        'tablesCount',
+        'reservedCount',
+        'availableCount',
+        'reservationsToday'
+    ));
+}
+```
+
+**Dashboard Metrics:**
+
+<ResponseField name="tablesCount" type="integer">
+  Total number of tables in the restaurant
+</ResponseField>
+
+<ResponseField name="reservedCount" type="integer">
+  Number of currently reserved tables
+</ResponseField>
+
+<ResponseField name="availableCount" type="integer">
+  Number of available tables
+</ResponseField>
+
+<ResponseField name="reservationsToday" type="integer">
+  Number of reservations scheduled for today
+</ResponseField>
+
+---
+
+## Data Models
+
+### Table Model
+
+```php
+class Table extends Model
+{
+    protected $fillable = [
+        'name',
+        'number',
+        'type',
+        'seats',
+        'status',
+    ];
+
+    public function reservations()
+    {
+        return $this->hasMany(Reservation::class);
+    }
+}
+```
+
+### Reservation Model
+
+```php
+class Reservation extends Model
+{
+    protected $fillable = [
+        'name',
+        'email',
+        'phone',
+        'guest',
+        'date',
+        'time',
+        'message',
+        'table_id',
+    ];
+
+    protected $casts = [
+        'date' => 'date',
+        'time' => 'datetime',
+    ];
+
+    public function table()
+    {
+        return $this->belongsTo(Table::class);
+    }
+}
+```
+
+---
+
+## Table Status Flow
+
+<Tabs>
+  <Tab title="disponible">
+    **Available**
+    
+    - Table is free and ready for customers
+    - Can be assigned to new reservations
+    - Default status for new tables
+  </Tab>
+  
+  <Tab title="reservada">
+    **Reserved**
+    
+    - Table has been assigned to a reservation
+    - Set automatically when `assignTable()` is called
+    - Cannot be assigned to other reservations until freed
+  </Tab>
+  
+  <Tab title="occupied">
+    **Occupied**
+    
+    - Table is currently in use by customers
+    - Manually set by waiters
+    - Should be set to `disponible` after customers leave
+  </Tab>
+</Tabs>
+
+---
+
+## Usage Examples
+
+### Assign Table via AJAX
+
+```javascript
+fetch(`/mesero/reservations/${reservationId}/assign-table`, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({ table_id: tableId })
+})
+.then(response => response.json())
+.then(data => {
+    if (data.success) {
+        alert(`Mesa ${data.table_name} asignada a ${data.user_name}`);
+    } else {
+        alert(data.message);
+    }
+});
+```
+
+### Update Table Status
+
+```html
+<form action="{{ route('mesero.tables.update', $table->id) }}" method="POST">
+    @csrf
+    @method('PUT')
+    <input type="hidden" name="name" value="{{ $table->name }}">
+    <input type="hidden" name="number" value="{{ $table->number }}">
+    <input type="hidden" name="type" value="{{ $table->type }}">
+    <input type="hidden" name="seats" value="{{ $table->seats }}">
+    <select name="status">
+        <option value="available">Disponible</option>
+        <option value="occupied">Ocupada</option>
+        <option value="reservada">Reservada</option>
+    </select>
+    <button type="submit">Actualizar</button>
+</form>
+```

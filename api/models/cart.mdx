@@ -1,0 +1,279 @@
+---
+title: 'Cart Model'
+description: 'Cart model for managing shopping cart items with user and food associations'
+---
+
+## Overview
+
+The `Cart` model represents shopping cart functionality in the restaurant management system. It manages temporary storage of food items that users intend to order.
+
+## Table Information
+
+<ParamField path="table" type="string">
+  **Table Name:** `carts`
+</ParamField>
+
+## Model Definition
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Cart extends Model
+{
+    use HasFactory;
+}
+```
+
+<Note>
+  The current Cart model implementation does not define explicit fillable fields. Consider adding the `$fillable` property to allow mass assignment for cart operations.
+</Note>
+
+## Database Fields
+
+Based on the database migration, the cart table includes the following fields:
+
+<ParamField path="user_id" type="string">
+  Reference to the user who owns this cart item
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "1", "42"
+</ParamField>
+
+<ParamField path="food_id" type="string">
+  Reference to the food item in the cart
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "5", "18"
+</ParamField>
+
+<ParamField path="quantity" type="string">
+  Quantity of the food item
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "2", "5"
+</ParamField>
+
+## Database Schema
+
+```php
+Schema::create('carts', function (Blueprint $table) {
+    $table->id();
+    $table->string('user_id')->nullable();
+    $table->string('food_id')->nullable();
+    $table->string('quantity')->nullable();
+    $table->timestamps();
+});
+```
+
+## Relationships
+
+<Expandable title="Potential Relationships (Not Currently Defined)">
+  The Cart model would benefit from defining the following relationships:
+
+  <ResponseField name="belongsTo: User" type="relationship">
+    ```php
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+    ```
+    Links the cart item to the user who added it.
+  </ResponseField>
+
+  <ResponseField name="belongsTo: Food" type="relationship">
+    ```php
+    public function food()
+    {
+        return $this->belongsTo(Food::class);
+    }
+    ```
+    Links the cart item to the food item being ordered.
+  </ResponseField>
+</Expandable>
+
+## Recommended Implementation
+
+Here's a recommended enhanced implementation of the Cart model:
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Cart extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'user_id',
+        'food_id',
+        'quantity',
+    ];
+
+    /**
+     * Get the user that owns the cart item.
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the food item in the cart.
+     */
+    public function food()
+    {
+        return $this->belongsTo(Food::class);
+    }
+
+    /**
+     * Get the total price for this cart item.
+     */
+    public function getTotalPrice()
+    {
+        return $this->food->price * $this->quantity;
+    }
+}
+```
+
+## Usage Examples
+
+### Adding Items to Cart
+
+```php
+// Add item to cart
+Cart::create([
+    'user_id' => auth()->id(),
+    'food_id' => 5,
+    'quantity' => 2
+]);
+
+// Or using mass assignment (if fillable is set)
+$cart = new Cart();
+$cart->user_id = auth()->id();
+$cart->food_id = 5;
+$cart->quantity = 2;
+$cart->save();
+```
+
+### Retrieving Cart Items
+
+```php
+// Get all cart items for current user
+$cartItems = Cart::where('user_id', auth()->id())->get();
+
+// Get cart items with food details (if relationships defined)
+$cartItems = Cart::where('user_id', auth()->id())
+    ->with('food')
+    ->get();
+
+// Calculate total cart value
+$total = Cart::where('user_id', auth()->id())
+    ->with('food')
+    ->get()
+    ->sum(function ($item) {
+        return $item->food->price * $item->quantity;
+    });
+```
+
+### Updating Cart Items
+
+```php
+// Update quantity
+$cartItem = Cart::where('user_id', auth()->id())
+    ->where('food_id', 5)
+    ->first();
+
+if ($cartItem) {
+    $cartItem->quantity = 3;
+    $cartItem->save();
+}
+
+// Increment quantity
+$cartItem->increment('quantity');
+```
+
+### Removing Cart Items
+
+```php
+// Remove specific item
+Cart::where('user_id', auth()->id())
+    ->where('food_id', 5)
+    ->delete();
+
+// Clear entire cart for user
+Cart::where('user_id', auth()->id())->delete();
+```
+
+### Converting Cart to Order
+
+```php
+// Get cart items and create order
+$cartItems = Cart::where('user_id', auth()->id())
+    ->with('food')
+    ->get();
+
+foreach ($cartItems as $item) {
+    Order::create([
+        'foodname' => $item->food->title,
+        'quantity' => $item->quantity,
+        'price' => $item->food->price * $item->quantity,
+        'name' => auth()->user()->name,
+        'phone' => auth()->user()->phone,
+        'address' => auth()->user()->address,
+    ]);
+}
+
+// Clear cart after order is placed
+Cart::where('user_id', auth()->id())->delete();
+```
+
+## Timestamps
+
+- `created_at`: Automatically set when the cart item is added
+- `updated_at`: Automatically updated when the cart item is modified
+
+## Recommendations
+
+<Warning>
+  **Data Type Issues:** The current schema uses `string` types for `user_id`, `food_id`, and `quantity`. Consider migrating these to appropriate types:
+  - `user_id` → `unsignedBigInteger` with foreign key constraint
+  - `food_id` → `unsignedBigInteger` with foreign key constraint
+  - `quantity` → `integer` or `unsignedInteger`
+</Warning>
+
+<Note>
+  **Recommended Enhancements:**
+  1. Add `$fillable` property to enable mass assignment
+  2. Define `user()` and `food()` relationship methods
+  3. Add validation rules for cart operations
+  4. Implement a method to calculate total price per cart item
+  5. Add foreign key constraints in the database migration
+  6. Consider adding a `session_id` field for guest cart functionality
+</Note>
+
+## Example Migration Enhancement
+
+```php
+Schema::create('carts', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')
+          ->nullable()
+          ->constrained()
+          ->onDelete('cascade');
+    $table->foreignId('food_id')
+          ->nullable()
+          ->constrained('food')
+          ->onDelete('cascade');
+    $table->unsignedInteger('quantity')->default(1);
+    $table->string('session_id')->nullable(); // For guest carts
+    $table->timestamps();
+    
+    // Ensure no duplicate items in cart
+    $table->unique(['user_id', 'food_id']);
+});
+```

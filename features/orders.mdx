@@ -1,0 +1,422 @@
+---
+title: 'Orders'
+description: 'Complete order processing system with cart functionality and transaction handling'
+---
+
+## Overview
+
+The order system manages the complete order lifecycle from cart to order confirmation. It supports both authenticated and guest users, with cart persistence for logged-in users.
+
+## Data Models
+
+### Cart Model
+
+The Cart model stores temporary items before order confirmation:
+
+```php app/Models/Cart.php
+class Cart extends Model
+{
+    use HasFactory;
+}
+```
+
+<Note>
+While the Cart model is minimal, it includes implicit fields: `user_id`, `food_id`, `quantity`, and timestamps through database schema.
+</Note>
+
+### Order Model
+
+The Order model represents confirmed customer orders:
+
+```php app/Models/Order.php
+class Order extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'foodname',
+        'quantity',
+        'price',
+        'name',
+        'phone',
+        'address',
+    ];
+}
+```
+
+<ParamField path="foodname" type="string">
+  Name of the food item ordered
+</ParamField>
+
+<ParamField path="quantity" type="integer">
+  Number of items ordered
+</ParamField>
+
+<ParamField path="price" type="decimal">
+  Price per item at time of order
+</ParamField>
+
+<ParamField path="name" type="string">
+  Customer name for delivery
+</ParamField>
+
+<ParamField path="phone" type="string">
+  Customer contact number
+</ParamField>
+
+<ParamField path="address" type="text">
+  Delivery address
+</ParamField>
+
+## Cart Controller
+
+The CartController manages cart operations for authenticated users.
+
+### View Cart
+
+```php app/Http/Controllers/CartController.php
+public function index(): View
+{
+    $user = Auth::user();
+    if (! $user) {
+        return redirect()->route('login');
+    }
+
+    // Load cart items with food relationship
+    $items = Cart::with('food')
+        ->where('user_id', $user->id)
+        ->get();
+
+    $count = $items->count();
+
+    return view('showcart', [
+        'items' => $items,
+        'count' => $count,
+    ]);
+}
+```
+
+### Add to Cart
+
+```php app/Http/Controllers/CartController.php
+public function store(Request $request, Food $food): RedirectResponse
+{
+    $request->validate([
+        'quantity' => 'required|integer|min:1',
+    ]);
+
+    $user = Auth::user();
+    if (! $user) {
+        return redirect()
+            ->route('login')
+            ->with('error', 'Debes iniciar sesión para añadir al carrito.');
+    }
+
+    // updateOrCreate to avoid duplicates
+    Cart::updateOrCreate(
+        ['user_id' => $user->id, 'food_id' => $food->id],
+        ['quantity' => $request->input('quantity')]
+    );
+
+    return redirect()
+        ->back()
+        ->with('success', 'Producto agregado al carrito.');
+}
+```
+
+<Accordion title="Duplicate Prevention">
+The `updateOrCreate()` method prevents duplicate cart entries. If the user already has this food item in their cart, it updates the quantity instead of creating a new record.
+</Accordion>
+
+### Remove from Cart
+
+```php app/Http/Controllers/CartController.php
+public function destroy(Cart $cart): RedirectResponse
+{
+    $user = Auth::user();
+    
+    // Security: only owner can delete
+    if (! $user || $cart->user_id !== $user->id) {
+        abort(403, 'No autorizado.');
+    }
+
+    $cart->delete();
+
+    return redirect()
+        ->back()
+        ->with('success', 'Item eliminado del carrito.');
+}
+```
+
+<Note type="warning">
+**Security Check**: The destroy method verifies that the authenticated user owns the cart item before allowing deletion.
+</Note>
+
+## Order Confirmation Flow
+
+The `orderConfirm` method in HomeController processes cart items into confirmed orders.
+
+### Order Confirmation Method
+
+```php app/Http/Controllers/HomeController.php
+public function orderConfirm(Request $request)
+{
+    // Validate common fields
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'phone' => 'required|string|max:40',
+        'address' => 'nullable|string',
+    ]);
+
+    $user = Auth::user();
+    $items = $request->input('items');
+    $normalized = [];
+
+    // Handle structured items payload
+    if (is_array($items) && count($items) > 0) {
+        foreach ($items as $i => $it) {
+            $validated = \Validator::make($it, [
+                'food_id' => 'required|exists:foods,id',
+                'quantity' => 'required|integer|min:1',
+            ])->validate();
+
+            $food = Food::find($validated['food_id']);
+            $normalized[] = [
+                'food_id' => $food->id,
+                'title' => $food->title,
+                'price' => $food->price,
+                'quantity' => (int)$validated['quantity'],
+                'subtotal' => $food->price * (int)$validated['quantity'],
+            ];
+        }
+    }
+```
+
+### Legacy Format Support
+
+```php
+    // Handle legacy array format (foodname[], price[], quantity[])
+    else if ($request->has('foodname') && is_array($request->foodname)) {
+        $names = $request->foodname;
+        $prices = $request->price ?? [];
+        $qtys = $request->quantity ?? [];
+
+        foreach ($names as $k => $name) {
+            $price = isset($prices[$k]) ? floatval($prices[$k]) : 0;
+            $qty = isset($qtys[$k]) ? intval($qtys[$k]) : 1;
+            $normalized[] = [
+                'food_id' => null,
+                'title' => $name,
+                'price' => $price,
+                'quantity' => $qty,
+                'subtotal' => $price * $qty,
+            ];
+        }
+    } else {
+        return redirect()
+            ->back()
+            ->with('error', 'No se enviaron items para la orden.');
+    }
+```
+
+### Transaction Processing
+
+```php
+    // Create Order + OrderItems in transaction
+    DB::beginTransaction();
+    try {
+        $order = Order::create([
+            'user_id' => $user ? $user->id : null,
+            'customer_name' => $request->name,
+            'phone' => $request->phone,
+            'address' => $request->address,
+            'total' => 0,
+            'status' => 'pending',
+        ]);
+
+        $total = 0;
+        foreach ($normalized as $it) {
+            $orderItem = $order->items()->create([
+                'food_id' => $it['food_id'] ?? null,
+                'title'   => $it['title'],
+                'price'   => $it['price'],
+                'quantity'=> $it['quantity'],
+                'subtotal'=> $it['subtotal'],
+            ]);
+            $total += $it['subtotal'];
+        }
+
+        $order->update(['total' => $total]);
+
+        // Clear cart items
+        if ($user) {
+            $cartQuery = Cart::where('user_id', $user->id);
+            $foodIds = array_filter(array_column($normalized, 'food_id'));
+            if (count($foodIds) > 0) {
+                $cartQuery->whereIn('food_id', $foodIds)->delete();
+            } else {
+                $cartQuery->delete();
+            }
+        }
+
+        DB::commit();
+        return redirect()
+            ->route('home')
+            ->with('success', 'Orden creada correctamente. ID: ' . $order->id);
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return redirect()
+            ->back()
+            ->with('error', 'No se pudo procesar la orden. Intente de nuevo.');
+    }
+}
+```
+
+<Accordion title="Transaction Safety Explained">
+**Why Transactions?**
+- Creates order and order items atomically
+- Updates order total after all items are processed
+- Clears cart items only if order succeeds
+- Rolls back everything if any step fails
+- Prevents partial orders or orphaned cart items
+</Accordion>
+
+## Input Formats
+
+The orderConfirm method accepts two payload formats:
+
+<Tabs>
+  <Tab title="Structured Format (Recommended)">
+    ```json
+    {
+      "name": "John Doe",
+      "phone": "555-0123",
+      "address": "123 Main St",
+      "items": [
+        { "food_id": 1, "quantity": 2 },
+        { "food_id": 3, "quantity": 1 }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="Legacy Format">
+    ```json
+    {
+      "name": "John Doe",
+      "phone": "555-0123",
+      "address": "123 Main St",
+      "foodname": ["Pizza", "Burger"],
+      "price": ["15.99", "10.99"],
+      "quantity": ["2", "1"]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Cart Routes
+
+All cart and order confirmation routes require authentication:
+
+```php routes/web.php
+Route::middleware(['auth'])->group(function () {
+    Route::get('/cart', [CartController::class, 'index'])
+        ->name('cart.index');
+    
+    Route::post('/cart/{food}', [CartController::class, 'store'])
+        ->name('cart.store');
+    
+    Route::delete('/cart/{cart}', [CartController::class, 'destroy'])
+        ->name('cart.destroy');
+
+    Route::post('/orderconfirm', [HomeController::class, 'orderConfirm'])
+        ->name('order.confirm');
+});
+```
+
+## Order Lifecycle
+
+<Accordion title="1. Browse Menu">
+  - Customer views food items at `/` or `/menu`
+  - Public routes, no authentication required
+  - View details at `/infocomida/{food}`
+</Accordion>
+
+<Accordion title="2. Add to Cart">
+  - User must be authenticated
+  - POST to `/cart/{food}` with quantity
+  - Creates or updates cart item
+  - Cart persists across sessions
+</Accordion>
+
+<Accordion title="3. Review Cart">
+  - View cart at `/cart`
+  - See all items with quantities and prices
+  - Can remove items or adjust quantities
+</Accordion>
+
+<Accordion title="4. Confirm Order">
+  - Submit delivery information
+  - POST to `/orderconfirm` with items and customer data
+  - Creates order in database transaction
+  - Clears cart on success
+</Accordion>
+
+<Accordion title="5. Admin Processing">
+  - Admins view orders at `/admin/orders`
+  - Track order status (pending, processing, completed)
+  - View customer details and order items
+</Accordion>
+
+## Admin Order Management
+
+Admins have dedicated routes for order oversight:
+
+```php routes/web.php
+Route::middleware('role:admin')->group(function () {
+    Route::get('orders', [AdminOrderController::class, 'index'])
+        ->name('orders.index');
+    
+    Route::get('orders/{order}', [AdminOrderController::class, 'show'])
+        ->name('orders.show');
+});
+```
+
+**Order Management Access:**
+- ✅ Admin: Full access to all orders
+- ❌ Chef: No access
+- ❌ Mesero: No access
+- ❌ Customers: Can only view their own orders
+
+## Best Practices
+
+1. **Use Transactions**: Always wrap order creation and cart clearing in transactions
+2. **Validate Ownership**: Check user_id before allowing cart modifications
+3. **Prevent Duplicates**: Use `updateOrCreate()` for cart items
+4. **Price Snapshot**: Store prices in orders (don't reference Food prices)
+5. **Guest Support**: Handle both authenticated and guest users
+6. **Error Handling**: Use try-catch with transaction rollback
+7. **Eager Loading**: Load cart items with food data to prevent N+1
+
+## Common Queries
+
+```php
+// Get user's cart total
+$total = Cart::where('user_id', $userId)
+    ->join('food', 'carts.food_id', '=', 'food.id')
+    ->sum(DB::raw('carts.quantity * food.price'));
+
+// Count cart items for header badge
+$count = Cart::where('user_id', $userId)->count();
+
+// Get all orders for a customer
+$orders = Order::where('user_id', $userId)
+    ->orderBy('created_at', 'desc')
+    ->get();
+
+// Clear entire cart
+Cart::where('user_id', $userId)->delete();
+```
+
+<Note type="info">
+Consider implementing order status tracking (pending → preparing → ready → delivered) for better customer experience and kitchen workflow management.
+</Note>

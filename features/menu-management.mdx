@@ -1,0 +1,320 @@
+---
+title: 'Menu Management'
+description: 'Complete food menu system with categories, nutritional information, and image handling'
+---
+
+## Overview
+
+The menu management system allows admins and chefs to create, update, and organize food items with comprehensive details including nutritional information, pricing, and categorization.
+
+## Food Model
+
+The Food model represents individual menu items with all their attributes.
+
+```php app/Models/Food.php
+class Food extends Model
+{
+    use HasFactory;
+
+    protected $table = 'food';
+
+    protected $fillable = [
+        'title',
+        'price',
+        'image',
+        'description',
+        'ingredients',
+        'proteins',
+        'calories',
+        'size',
+        'category_id'
+    ];
+
+    // Relationship: A food belongs to a category
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
+}
+```
+
+### Food Attributes
+
+<ParamField path="title" type="string" required>
+  The name of the food item displayed on menus
+</ParamField>
+
+<ParamField path="price" type="decimal">
+  Price of the food item
+</ParamField>
+
+<ParamField path="image" type="string">
+  Path to the food item image stored in storage
+</ParamField>
+
+<ParamField path="description" type="text">
+  Detailed description of the food item
+</ParamField>
+
+<ParamField path="ingredients" type="text">
+  List of ingredients used in the dish
+</ParamField>
+
+<ParamField path="proteins" type="decimal">
+  Protein content in grams for nutritional information
+</ParamField>
+
+<ParamField path="calories" type="integer">
+  Caloric content of the dish
+</ParamField>
+
+<ParamField path="size" type="string">
+  Serving size (e.g., "Regular", "Large", "500g")
+</ParamField>
+
+<ParamField path="category_id" type="integer">
+  Foreign key linking to the categories table
+</ParamField>
+
+## Category System
+
+Food items are organized into categories for better navigation and filtering.
+
+```php app/Models/Category.php
+class Category extends Model
+{
+    use HasFactory;
+
+    protected $table = 'categories';
+    protected $fillable = ['name'];
+
+    // Relationship: A category has many foods
+    public function foods()
+    {
+        return $this->hasMany(Food::class);
+    }
+}
+```
+
+<Note>
+Categories help organize menu items (e.g., "Appetizers", "Main Courses", "Desserts", "Beverages") and enable filtered browsing for customers.
+</Note>
+
+## Food Controller
+
+The FoodController handles all CRUD operations for menu items with role-based access control.
+
+### List All Foods
+
+```php app/Http/Controllers/Admin/FoodController.php
+public function index()
+{
+    $foods = Food::with('category')
+        ->orderBy('id', 'desc')
+        ->paginate(12);
+    $categories = Category::all();
+    
+    return view('admin.foods', compact('foods','categories'));
+}
+```
+
+<Accordion title="Eager Loading Performance">
+The `with('category')` method uses eager loading to prevent N+1 query problems. This loads all related categories in a single query, significantly improving performance when displaying multiple food items.
+</Accordion>
+
+### Create New Food Item
+
+```php app/Http/Controllers/Admin/FoodController.php
+public function store(StoreFoodRequest $request)
+{
+    $data = $request->validated();
+
+    if ($request->hasFile('image')) {
+        $data['image'] = $this->images->store(
+            $request->file('image'), 
+            'foods'
+        );
+    }
+
+    Food::create($data);
+
+    return redirect()
+        ->route('admin.foods.index')
+        ->with('success', 'Menú agregado con éxito.');
+}
+```
+
+### Update Existing Food Item
+
+```php app/Http/Controllers/Admin/FoodController.php
+public function update(UpdateFoodRequest $request, Food $food)
+{
+    $data = $request->validated();
+
+    if ($request->hasFile('image')) {
+        // Delete old image
+        $this->images->delete($food->image);
+        // Store new image
+        $data['image'] = $this->images->store(
+            $request->file('image'), 
+            'foods'
+        );
+    }
+
+    $food->update($data);
+
+    return redirect()
+        ->route('admin.foods.index')
+        ->with('success', 'Menú actualizado con éxito.');
+}
+```
+
+<Note type="warning">
+**Image Management**: The system automatically deletes old images when updating to prevent storage bloat. The `ImageService` handles secure file storage and deletion.
+</Note>
+
+### Delete Food Item
+
+```php app/Http/Controllers/Admin/FoodController.php
+public function destroy(Food $food)
+{
+    // Delete image from storage
+    $this->images->delete($food->image);
+    
+    // Delete database record
+    $food->delete();
+
+    return redirect()
+        ->back()
+        ->with('success', 'Menú eliminado correctamente.');
+}
+```
+
+## Image Service
+
+The system uses a dedicated `ImageService` for consistent image handling:
+
+```php
+protected ImageService $images;
+
+public function __construct(ImageService $images)
+{
+    $this->images = $images;
+}
+```
+
+<Tabs>
+  <Tab title="Store Image">
+    ```php
+    $path = $this->images->store($file, 'foods');
+    // Stores in: storage/app/public/foods/
+    ```
+  </Tab>
+  <Tab title="Delete Image">
+    ```php
+    $this->images->delete($food->image);
+    // Removes file from storage
+    ```
+  </Tab>
+</Tabs>
+
+## Public Menu Display
+
+Customers can browse the menu without authentication:
+
+```php app/Http/Controllers/HomeController.php
+public function index()
+{
+    // Paginate to avoid loading everything in memory
+    $foods = Food::with('category')->latest()->paginate(12);
+    $chefs = Chef::all();
+    $user = Auth::user();
+    $count = $user ? Cart::where('user_id', $user->id)->count() : 0;
+    $categories = Category::withCount('foods')->get();
+
+    return view('home', compact('foods','chefs','count','categories'));
+}
+
+public function comidaview()
+{
+    $foods = Food::with('category')->paginate(24);
+    $user = Auth::user();
+    $count = $user ? Cart::where('user_id', $user->id)->count() : 0;
+
+    return view('comidaview', compact('foods','count'));
+}
+```
+
+### Food Detail View
+
+```php app/Http/Controllers/HomeController.php
+public function infocomida(Food $food)
+{
+    return view('infocomida', compact('food'));
+}
+```
+
+<Note>
+Route model binding automatically fetches the Food model: `Route::get('/infocomida/{food}', ...)`
+</Note>
+
+## Access Control
+
+Menu management routes are protected by role middleware:
+
+```php routes/web.php
+Route::middleware('role:admin,chef')->group(function () {
+    Route::resource('foods', AdminFoodController::class)->names('foods');
+});
+```
+
+**Who Can Manage Menus:**
+- ✅ Admin: Full access (create, read, update, delete)
+- ✅ Chef: Full access (create, read, update, delete)
+- ❌ Mesero: No access to food management
+- ❌ Customers: Read-only access through public routes
+
+## Form Validation
+
+The system uses Form Request classes for validation:
+
+<Accordion title="StoreFoodRequest">
+  Custom validation rules for creating new food items:
+  - `title`: required, string, max 255 characters
+  - `price`: required, numeric, min 0
+  - `image`: required, image file, max 2MB
+  - `category_id`: required, exists in categories table
+  - `proteins`: nullable, numeric
+  - `calories`: nullable, integer
+</Accordion>
+
+<Accordion title="UpdateFoodRequest">
+  Similar to StoreFoodRequest but with optional image:
+  - All fields same as create
+  - `image`: nullable (only required if changing)
+</Accordion>
+
+## Best Practices
+
+1. **Always Use Eager Loading**: Load categories with `->with('category')` to avoid N+1 queries
+2. **Image Cleanup**: Delete old images before storing new ones to manage storage
+3. **Pagination**: Use `paginate()` for large menus to improve performance
+4. **Category Organization**: Group similar items together for better UX
+5. **Nutritional Data**: Include proteins and calories for health-conscious customers
+6. **Validation**: Use Form Requests for consistent validation rules
+
+## Common Queries
+
+```php
+// Get all foods in a specific category
+$foods = Food::where('category_id', $categoryId)->get();
+
+// Get foods with category count
+$categories = Category::withCount('foods')->get();
+
+// Search foods by title
+$foods = Food::where('title', 'LIKE', "%{$search}%")->get();
+
+// Get foods sorted by price
+$foods = Food::orderBy('price', 'asc')->get();
+```

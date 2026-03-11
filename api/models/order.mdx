@@ -1,0 +1,145 @@
+---
+title: 'Order Model'
+description: 'Order model for managing customer food orders with delivery information'
+---
+
+## Overview
+
+The `Order` model represents customer orders in the restaurant management system. It stores order details including food items, quantities, pricing, and customer delivery information.
+
+## Table Information
+
+<ParamField path="table" type="string">
+  **Table Name:** `orders`
+</ParamField>
+
+## Model Definition
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Order extends Model
+{
+    use HasFactory;
+
+    protected $fillable=[
+        'foodname',
+        'quantity',
+        'price',
+        'name',
+        'phone',
+        'address',
+    ];
+}
+```
+
+## Fillable Fields
+
+<ParamField path="foodname" type="string">
+  Name of the food item ordered
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "Grilled Salmon Deluxe"
+</ParamField>
+
+<ParamField path="quantity" type="string">
+  Quantity of items ordered
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "2"
+</ParamField>
+
+<ParamField path="price" type="string">
+  Total price for the order
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "51.98"
+</ParamField>
+
+<ParamField path="name" type="string">
+  Customer name for the order
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "John Doe"
+</ParamField>
+
+<ParamField path="phone" type="string">
+  Customer phone number
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "+1-555-0123"
+</ParamField>
+
+<ParamField path="address" type="string">
+  Delivery address for the order
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "123 Main St, Apt 4B, New York, NY 10001"
+</ParamField>
+
+## Relationships
+
+<Expandable title="No explicit relationships defined">
+  The current Order model does not define explicit Eloquent relationships. However, based on the database schema, orders can be associated with tables.
+
+  <ResponseField name="Potential Relationships" type="info">
+    Consider adding:
+    - `belongsTo(Table::class)` - if orders should be linked to specific tables
+    - `belongsTo(User::class)` - if orders should be linked to authenticated users
+    - `hasMany(OrderItem::class)` - if implementing detailed order items
+  </ResponseField>
+</Expandable>
+
+## Database Schema
+
+```php
+Schema::create('orders', function (Blueprint $table) {
+    $table->id();
+    $table->string('foodname')->nullable();
+    $table->string('price')->nullable();
+    $table->string('quantity')->nullable();
+    $table->string('name')->nullable();
+    $table->string('phone')->nullable();
+    $table->string('address')->nullable();
+    $table->timestamps();
+});
+```
+
+## Usage Example
+
+```php
+// Create a new order
+$order = Order::create([
+    'foodname' => 'Grilled Salmon',
+    'quantity' => '2',
+    'price' => '51.98',
+    'name' => 'John Doe',
+    'phone' => '+1-555-0123',
+    'address' => '123 Main St, New York, NY'
+]);
+
+// Retrieve all orders
+$orders = Order::all();
+
+// Find a specific order
+$order = Order::find(1);
+
+// Update an order
+$order->update([
+    'address' => '456 Oak Ave, New York, NY'
+]);
+```
+
+## Timestamps
+
+- `created_at`: Automatically set when the order is created
+- `updated_at`: Automatically updated when the order is modified
+
+## Notes
+
+<Note>
+  The current implementation stores price and quantity as strings. Consider migrating these fields to appropriate numeric types (decimal for price, integer for quantity) for better data integrity and calculation support.
+</Note>

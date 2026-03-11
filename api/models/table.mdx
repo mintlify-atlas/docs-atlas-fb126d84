@@ -1,0 +1,256 @@
+---
+title: 'Table Model'
+description: 'Table model for managing restaurant tables with status tracking and reservations'
+---
+
+## Overview
+
+The `Table` model represents physical tables in the restaurant. It manages table information including location type, capacity, availability status, and relationships with orders and reservations.
+
+## Table Information
+
+<ParamField path="table" type="string">
+  **Table Name:** `tables`
+</ParamField>
+
+## Model Definition
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Table extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'number',
+        'type',
+        'status',
+        'seats',
+    ];
+}
+```
+
+## Fillable Fields
+
+<ParamField path="name" type="string" required>
+  Display name for the table
+  - **Database Type:** `string`
+  - **Nullable:** No
+  - **Example:** "Table Alpha", "VIP-1"
+</ParamField>
+
+<ParamField path="number" type="string" required>
+  Unique table number identifier
+  - **Database Type:** `string`
+  - **Nullable:** No
+  - **Unique:** Yes
+  - **Example:** "T-101", "12"
+</ParamField>
+
+<ParamField path="type" type="enum" required>
+  Location type of the table
+  - **Database Type:** `enum`
+  - **Allowed Values:** `terraza`, `interior`, `exterior`
+  - **Example:** "interior"
+</ParamField>
+
+<ParamField path="status" type="enum" required>
+  Current availability status of the table
+  - **Database Type:** `enum`
+  - **Allowed Values:** `disponible`, `ocupada`, `reservada`
+  - **Default:** `disponible`
+  - **Example:** "disponible"
+</ParamField>
+
+<ParamField path="seats" type="integer" required>
+  Number of seats available at the table
+  - **Database Type:** `integer`
+  - **Nullable:** No
+  - **Example:** 4
+</ParamField>
+
+## Status Values
+
+<ResponseField name="disponible" type="status">
+  Table is available for new customers or reservations
+</ResponseField>
+
+<ResponseField name="ocupada" type="status">
+  Table is currently occupied by customers
+</ResponseField>
+
+<ResponseField name="reservada" type="status">
+  Table has been reserved for a future booking
+</ResponseField>
+
+## Type Values
+
+<ResponseField name="terraza" type="location">
+  Table located on the terrace area
+</ResponseField>
+
+<ResponseField name="interior" type="location">
+  Table located inside the restaurant
+</ResponseField>
+
+<ResponseField name="exterior" type="location">
+  Table located in the exterior area
+</ResponseField>
+
+## Relationships
+
+### hasMany: Orders
+
+<Expandable title="orders()">
+  A table can have multiple orders associated with it.
+
+  ```php
+  public function orders()
+  {
+      return $this->hasMany(Order::class);
+  }
+  ```
+
+  <ResponseField name="Usage Example" type="code">
+    ```php
+    $table = Table::find(1);
+    $orders = $table->orders;
+    
+    foreach ($orders as $order) {
+        echo $order->foodname . ": $" . $order->price;
+    }
+    ```
+  </ResponseField>
+</Expandable>
+
+### hasOne: Reservation
+
+<Expandable title="reservation()">
+  A table can have one active reservation.
+
+  ```php
+  public function reservation()
+  {
+      return $this->hasOne(Reservation::class);
+  }
+  ```
+
+  <ResponseField name="Usage Example" type="code">
+    ```php
+    $table = Table::find(1);
+    $reservation = $table->reservation;
+    
+    if ($reservation) {
+        echo "Reserved by: " . $reservation->name;
+        echo "Time: " . $reservation->time;
+    }
+    ```
+  </ResponseField>
+
+  <ResponseField name="Check Availability" type="code">
+    ```php
+    // Find available tables with capacity for 4 people
+    $availableTables = Table::where('status', 'disponible')
+        ->where('seats', '>=', 4)
+        ->whereDoesntHave('reservation')
+        ->get();
+    ```
+  </ResponseField>
+</Expandable>
+
+## Database Schema
+
+```php
+Schema::create('tables', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->string('number')->unique();
+    $table->enum('type', ['terraza', 'interior', 'exterior']);
+    $table->enum('status', ['disponible', 'ocupada', 'reservada'])
+          ->default('disponible');
+    $table->integer('seats');
+    $table->timestamps();
+});
+```
+
+## Usage Examples
+
+### Creating a Table
+
+```php
+$table = Table::create([
+    'name' => 'Table 1',
+    'number' => 'T-001',
+    'type' => 'interior',
+    'status' => 'disponible',
+    'seats' => 4
+]);
+```
+
+### Querying Tables
+
+```php
+// Get all available tables
+$availableTables = Table::where('status', 'disponible')->get();
+
+// Get tables by type
+$terraceTables = Table::where('type', 'terraza')->get();
+
+// Find tables with specific capacity
+$largeTables = Table::where('seats', '>=', 6)->get();
+
+// Get occupied tables with their orders
+$occupiedTables = Table::where('status', 'ocupada')
+    ->with('orders')
+    ->get();
+```
+
+### Updating Table Status
+
+```php
+// Mark table as occupied
+$table = Table::where('number', 'T-001')->first();
+$table->update(['status' => 'ocupada']);
+
+// Mark table as reserved
+$table->update(['status' => 'reservada']);
+
+// Make table available again
+$table->update(['status' => 'disponible']);
+```
+
+### Complex Queries
+
+```php
+// Get available interior tables for 4+ people
+$suitableTables = Table::where('type', 'interior')
+    ->where('status', 'disponible')
+    ->where('seats', '>=', 4)
+    ->orderBy('seats', 'asc')
+    ->get();
+
+// Get all reserved tables with reservation details
+$reservedTables = Table::where('status', 'reservada')
+    ->with('reservation')
+    ->get();
+```
+
+## Timestamps
+
+- `created_at`: Automatically set when the table record is created
+- `updated_at`: Automatically updated when the table record is modified
+
+## Best Practices
+
+<Note>
+  When managing table status:
+  - Always update status to `ocupada` when customers are seated
+  - Set status to `reservada` when a reservation is confirmed
+  - Return status to `disponible` after customers leave
+  - Consider implementing automatic status updates based on reservation times
+</Note>

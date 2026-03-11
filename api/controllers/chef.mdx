@@ -1,0 +1,427 @@
+---
+title: 'ChefController'
+description: 'Chef-specific controller for managing food menus and chef profiles'
+icon: 'hat-chef'
+---
+
+## Overview
+
+The `ChefController` handles operations specific to chef users, including managing food menus and maintaining their professional profiles.
+
+**Location:** `app/Http/Controllers/ChefController.php`
+
+**Route Prefix:** `/chef`
+
+**Middleware:** `auth`, `role:chef`
+
+---
+
+## Menu Management
+
+### cheffoodmenu()
+
+Display all food items with categories for the chef.
+
+**Route:** `GET /chef/menu`
+
+**Route Name:** `chef.menu`
+
+**Implementation:**
+
+```php
+public function cheffoodmenu()
+{
+    $foods = Food::all();
+    $categories = Category::all();
+    return view("chef.cheffoodmenu", compact('foods', 'categories'));
+}
+```
+
+<ResponseField name="foods" type="Collection">
+  Collection of all Food models
+</ResponseField>
+
+<ResponseField name="categories" type="Collection">
+  Collection of all Category models
+</ResponseField>
+
+---
+
+### uploadfoodchef()
+
+Create a new food menu item.
+
+**Route:** `POST /chef/menu`
+
+**Route Name:** `chef.menu.store`
+
+**Implementation:**
+
+```php
+public function uploadfoodchef(Request $request)
+{
+    $food = new Food();
+    $this->saveFood($food, $request);
+    return redirect()->route('cheffoodmenu')->with('success', 'Menú agregado correctamente.');
+}
+
+protected function saveFood(Food $food, Request $request)
+{
+    $validated = $request->validate([
+        'title' => 'required|string|max:255',
+        'price' => 'required|numeric',
+        'description' => 'required|string',
+        'ingredients' => 'nullable|string',
+        'proteins' => 'nullable|string',
+        'calories' => 'nullable|integer',
+        'size' => 'nullable|string',
+        'category_id' => 'nullable|exists:categories,id',
+        'image' => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
+    ]);
+
+    $food->fill($validated);
+
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $imageName = time() . '.' . $image->getClientOriginalExtension();
+        $image->move(public_path('foodimage'), $imageName);
+        $food->image = $imageName;
+    }
+
+    $food->save();
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="title" type="string" required>
+  Food item name (max 255 characters)
+</ParamField>
+
+<ParamField path="price" type="numeric" required>
+  Food price (decimal format)
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Detailed description of the food item
+</ParamField>
+
+<ParamField path="ingredients" type="string">
+  List of ingredients (optional)
+</ParamField>
+
+<ParamField path="proteins" type="string">
+  Protein content information (optional)
+</ParamField>
+
+<ParamField path="calories" type="integer">
+  Calorie count (optional)
+</ParamField>
+
+<ParamField path="size" type="string">
+  Portion size description (optional)
+</ParamField>
+
+<ParamField path="category_id" type="integer">
+  Category ID (must exist in categories table)
+</ParamField>
+
+<ParamField path="image" type="file">
+  Food image (jpg, png, jpeg, gif - max 2MB)
+</ParamField>
+
+**Image Handling:**
+- Uploaded images are stored in `public/foodimage/` directory
+- Filename format: `{timestamp}.{extension}`
+- Supported formats: jpg, png, jpeg, gif
+- Maximum size: 2048 KB (2 MB)
+
+---
+
+### chefupdateview()
+
+Show the edit form for a food item.
+
+**Route:** `GET /chef/menu/{id}/edit`
+
+**Route Name:** `chef.menu.edit`
+
+**Implementation:**
+
+```php
+public function chefupdateview($id)
+{
+    $food = Food::findOrFail($id);
+    $categories = Category::all();
+    return view("chef.chefupdateview", compact('food', 'categories'));
+}
+```
+
+<ParamField path="id" type="integer" required>
+  Food item ID to edit
+</ParamField>
+
+---
+
+### updatechef()
+
+Update an existing food menu item.
+
+**Route:** `POST /chef/menu/{id}`
+
+**Route Name:** `chef.menu.update`
+
+**Implementation:**
+
+```php
+public function updatechef(Request $request, $id)
+{
+    $food = Food::findOrFail($id);
+    $this->saveFood($food, $request);
+    return redirect()->route('cheffoodmenu')->with('success', 'Menú actualizado correctamente.');
+}
+```
+
+<ParamField path="id" type="integer" required>
+  Food item ID to update
+</ParamField>
+
+**Note:** Uses the same validation rules as `uploadfoodchef()`. If an image is uploaded, it replaces the existing image.
+
+---
+
+### chefdeletemenu()
+
+Delete a food menu item.
+
+**Route:** `DELETE /chef/menu/{id}`
+
+**Route Name:** `chef.menu.delete`
+
+**Implementation:**
+
+```php
+public function chefdeletemenu($id)
+{
+    Food::findOrFail($id)->delete();
+    return redirect()->back()->with('success', 'Menú eliminado correctamente.');
+}
+```
+
+<ParamField path="id" type="integer" required>
+  Food item ID to delete
+</ParamField>
+
+---
+
+## Profile Management
+
+### showProfile()
+
+Display the chef's profile.
+
+**Route:** `GET /chef/profile`
+
+**Route Name:** `chef.profile`
+
+**Implementation:**
+
+```php
+public function showProfile()
+{
+    $user = Auth::user();
+    if ($user->usertype !== 'chef') {
+        return redirect()->route('home')->with('error', 'No tienes permiso para acceder a esta página.');
+    }
+
+    $chefProfile = $user->chef;
+    return view('chef.chefprofile', compact('chefProfile'));
+}
+```
+
+<ResponseField name="chefProfile" type="Chef|null">
+  Chef profile model associated with the authenticated user
+</ResponseField>
+
+**Security:**
+- Verifies that the authenticated user has `usertype` of 'chef'
+- Redirects non-chef users to home page with error message
+
+---
+
+### storeProfile()
+
+Create a new chef profile for the authenticated user.
+
+**Route:** `POST /chef/profile`
+
+**Route Name:** `chef.profile.store`
+
+**Implementation:**
+
+```php
+public function storeProfile(Request $request)
+{
+    $chef = new Chef();
+    $this->saveChefProfile($chef, $request);
+    $chef->user_id = Auth::id();
+    $chef->save();
+
+    return redirect()->route('chef.profile')->with('success', 'Perfil creado con éxito.');
+}
+
+protected function saveChefProfile(Chef $chef, Request $request)
+{
+    $validated = $request->validate([
+        'first_name' => 'required|string|max:255',
+        'last_name' => 'required|string|max:255',
+        'specialty' => 'required|string|max:255',
+        'description' => 'nullable|string',
+        'area' => 'required|in:preparacion,cocinar,servir,almacenamiento,lavar,pedidos',
+        'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+    ]);
+
+    $chef->fill($validated);
+
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $imageName = time() . '.' . $image->getClientOriginalExtension();
+        $image->move(public_path('chefimage'), $imageName);
+        $chef->image = $imageName;
+    }
+
+    $chef->save();
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="first_name" type="string" required>
+  Chef's first name (max 255 characters)
+</ParamField>
+
+<ParamField path="last_name" type="string" required>
+  Chef's last name (max 255 characters)
+</ParamField>
+
+<ParamField path="specialty" type="string" required>
+  Chef's culinary specialty (max 255 characters)
+</ParamField>
+
+<ParamField path="description" type="text">
+  Chef's biography or description (optional)
+</ParamField>
+
+<ParamField path="area" type="enum" required>
+  Work area - must be one of:
+  - `preparacion` - Food preparation
+  - `cocinar` - Cooking
+  - `servir` - Serving
+  - `almacenamiento` - Storage
+  - `lavar` - Cleaning
+  - `pedidos` - Orders
+</ParamField>
+
+<ParamField path="image" type="file">
+  Chef profile photo (jpeg, png, jpg, gif - max 2MB)
+</ParamField>
+
+**Image Handling:**
+- Profile images are stored in `public/chefimage/` directory
+- Filename format: `{timestamp}.{extension}`
+- Supported formats: jpeg, png, jpg, gif
+- Maximum size: 2048 KB (2 MB)
+
+---
+
+### updateProfile()
+
+Update the authenticated chef's profile.
+
+**Route:** `POST /chef/profile/update`
+
+**Route Name:** `chef.profile.update`
+
+**Implementation:**
+
+```php
+public function updateProfile(Request $request)
+{
+    $chef = Auth::user()->chef;
+
+    if (!$chef) {
+        return redirect()->route('chef.profile')->with('error', 'No tienes un perfil de chef para editar.');
+    }
+
+    $this->saveChefProfile($chef, $request);
+
+    return redirect()->route('chef.profile')->with('success', 'Perfil actualizado con éxito.');
+}
+```
+
+**Note:** Uses the same validation rules as `storeProfile()`. If an image is uploaded, it replaces the existing profile photo.
+
+**Error Handling:**
+- Returns error if the authenticated user doesn't have an associated chef profile
+- Requires creating a profile first via `storeProfile()`
+
+---
+
+## Data Relationships
+
+### Chef Model
+
+The Chef model should have the following structure:
+
+```php
+class Chef extends Model
+{
+    protected $fillable = [
+        'user_id',
+        'first_name',
+        'last_name',
+        'specialty',
+        'description',
+        'area',
+        'image',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+```
+
+### Database Schema
+
+**chefs table:**
+- `id` - Primary key
+- `user_id` - Foreign key to users table (unique)
+- `first_name` - String
+- `last_name` - String
+- `specialty` - String
+- `description` - Text (nullable)
+- `area` - Enum (preparacion, cocinar, servir, almacenamiento, lavar, pedidos)
+- `image` - String (nullable)
+- `created_at` - Timestamp
+- `updated_at` - Timestamp
+
+---
+
+## Advanced Controllers
+
+The system also includes a more advanced `Chef\FoodController` located in `app/Http/Controllers/Chef/FoodController.php` that uses Form Requests and Image Services:
+
+### Features:
+
+- **Form Request Validation:** Uses `StoreFoodRequest` and `UpdateFoodRequest`
+- **Image Service:** Delegates image handling to `ImageService`
+- **RESTful Resource:** Full CRUD with index, create, store, edit, update, destroy
+- **Pagination:** Lists foods with pagination (12 per page)
+
+**Route Prefix:** `/admin` (unified admin panel)
+
+**Middleware:** `auth`, `role:admin,chef`
+
+Refer to the source file for the complete implementation.

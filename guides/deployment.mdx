@@ -1,0 +1,340 @@
+---
+title: 'Deployment Guide'
+description: 'Learn how to deploy your Restaurant Management System to production'
+icon: 'rocket'
+---
+
+## Overview
+
+This guide covers deploying the Restaurant Management System built with Laravel 11. Follow these steps to prepare your application for production.
+
+## Prerequisites
+
+<Note>
+Before deploying, ensure you have:
+- PHP 8.1 or higher
+- Composer installed
+- Node.js 18.x or higher
+- MySQL database server
+- Web server (Apache/Nginx)
+</Note>
+
+## Production Deployment Steps
+
+<Steps>
+  <Step title="Prepare Environment File">
+    Copy the example environment file and configure it for production:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    Update the following critical variables:
+    
+    ```bash .env
+    APP_ENV=production
+    APP_DEBUG=false
+    APP_URL=https://yourdomain.com
+    
+    # Database Configuration
+    DB_CONNECTION=mysql
+    DB_HOST=your-db-host
+    DB_PORT=3306
+    DB_DATABASE=restaurante
+    DB_USERNAME=your-db-user
+    DB_PASSWORD=your-secure-password
+    ```
+    
+    <Warning>
+    Never set `APP_DEBUG=true` in production. This exposes sensitive application details.
+    </Warning>
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install PHP and Node.js dependencies:
+    
+    ```bash
+    # Install PHP dependencies (production only)
+    composer install --no-dev --optimize-autoloader
+    
+    # Install Node.js dependencies
+    npm install
+    
+    # Build frontend assets
+    npm run build
+    ```
+    
+    The `--no-dev` flag excludes development packages, reducing the deployment size.
+  </Step>
+
+  <Step title="Generate Application Key">
+    Generate a unique application key for encryption:
+    
+    ```bash
+    php artisan key:generate
+    ```
+    
+    This updates the `APP_KEY` in your `.env` file.
+  </Step>
+
+  <Step title="Run Database Migrations">
+    Set up the database schema:
+    
+    ```bash
+    php artisan migrate --force
+    ```
+    
+    The `--force` flag is required in production environments.
+    
+    <Note>
+    For detailed information about migrations, see the [Database Setup](/guides/database-setup) guide.
+    </Note>
+  </Step>
+
+  <Step title="Optimize Performance">
+    Run Laravel optimization commands:
+    
+    ```bash
+    # Cache configuration
+    php artisan config:cache
+    
+    # Cache routes
+    php artisan route:cache
+    
+    # Cache views
+    php artisan view:cache
+    
+    # Optimize autoloader
+    composer dump-autoload --optimize
+    ```
+    
+    These commands significantly improve application performance.
+  </Step>
+
+  <Step title="Set File Permissions">
+    Ensure proper permissions for storage and cache:
+    
+    ```bash
+    chmod -R 775 storage bootstrap/cache
+    chown -R www-data:www-data storage bootstrap/cache
+    ```
+    
+    Replace `www-data` with your web server user if different.
+  </Step>
+
+  <Step title="Configure Web Server">
+    Point your web server document root to the `public` directory.
+    
+    **Apache Example:**
+    ```apache
+    <VirtualHost *:80>
+        ServerName yourdomain.com
+        DocumentRoot /var/www/html/public
+        
+        <Directory /var/www/html/public>
+            AllowOverride All
+            Require all granted
+        </Directory>
+    </VirtualHost>
+    ```
+    
+    **Nginx Example:**
+    ```nginx
+    server {
+        listen 80;
+        server_name yourdomain.com;
+        root /var/www/html/public;
+        
+        index index.php;
+        
+        location / {
+            try_files $uri $uri/ /index.php?$query_string;
+        }
+        
+        location ~ \.php$ {
+            fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+            include fastcgi_params;
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Platform-Specific Deployments
+
+### Railway Deployment
+
+The application is configured for Railway deployment with the included Dockerfile:
+
+```bash
+# Railway will automatically detect and use the Dockerfile
+# Ensure these environment variables are set in Railway:
+APP_KEY=your-app-key
+DB_CONNECTION=mysql
+DB_HOST=railway-db-host
+DB_DATABASE=railway
+DB_USERNAME=root
+DB_PASSWORD=railway-db-password
+```
+
+<Note>
+The Dockerfile exposes port 8080, which is Railway's default port.
+</Note>
+
+### Docker Deployment
+
+For Docker deployments, see the [Docker Guide](/guides/docker) for detailed instructions.
+
+## Post-Deployment Tasks
+
+<Steps>
+  <Step title="Set Up SSL Certificate">
+    Enable HTTPS using Let's Encrypt:
+    
+    ```bash
+    # Using Certbot
+    sudo certbot --apache -d yourdomain.com
+    # or for Nginx
+    sudo certbot --nginx -d yourdomain.com
+    ```
+  </Step>
+
+  <Step title="Configure Queue Workers">
+    If using queues, set up a supervisor configuration:
+    
+    ```ini /etc/supervisor/conf.d/laravel-worker.conf
+    [program:laravel-worker]
+    process_name=%(program_name)s_%(process_num)02d
+    command=php /var/www/html/artisan queue:work --sleep=3 --tries=3
+    autostart=true
+    autorestart=true
+    user=www-data
+    numprocs=1
+    redirect_stderr=true
+    stdout_logfile=/var/www/html/storage/logs/worker.log
+    ```
+  </Step>
+
+  <Step title="Set Up Scheduled Tasks">
+    Add Laravel's scheduler to cron:
+    
+    ```bash
+    # Edit crontab
+    crontab -e
+    
+    # Add this line:
+    * * * * * cd /var/www/html && php artisan schedule:run >> /dev/null 2>&1
+    ```
+  </Step>
+
+  <Step title="Create Admin User">
+    Create an admin user for the system:
+    
+    ```bash
+    php artisan tinker
+    
+    # In Tinker:
+    $user = new App\Models\User();
+    $user->name = 'Admin';
+    $user->email = 'admin@yourdomain.com';
+    $user->usertype = 'admin';
+    $user->password = bcrypt('secure-password');
+    $user->save();
+    ```
+  </Step>
+</Steps>
+
+## Environment Variables Reference
+
+Key production environment variables:
+
+| Variable | Description | Production Value |
+|----------|-------------|------------------|
+| `APP_ENV` | Application environment | `production` |
+| `APP_DEBUG` | Debug mode | `false` |
+| `APP_URL` | Application URL | Your domain |
+| `SESSION_DRIVER` | Session storage | `database` or `redis` |
+| `CACHE_DRIVER` | Cache storage | `redis` or `memcached` |
+| `QUEUE_CONNECTION` | Queue driver | `redis` or `database` |
+
+<Warning>
+Always use strong, randomly generated passwords for database and application keys in production.
+</Warning>
+
+## Monitoring and Maintenance
+
+### Log Management
+
+Laravel logs are stored in `storage/logs/`. Monitor these regularly:
+
+```bash
+# View recent errors
+tail -f storage/logs/laravel.log
+
+# Clear old logs periodically
+php artisan log:clear
+```
+
+### Backup Strategy
+
+Implement regular backups:
+
+```bash
+# Database backup
+mysqldump -u username -p restaurante > backup-$(date +%Y%m%d).sql
+
+# Application files backup
+tar -czf app-backup-$(date +%Y%m%d).tar.gz /var/www/html
+```
+
+## Troubleshooting
+
+### Permission Issues
+
+If you encounter permission errors:
+
+```bash
+php artisan cache:clear
+php artisan config:clear
+chmod -R 775 storage bootstrap/cache
+```
+
+### 500 Internal Server Error
+
+Check these common causes:
+- `.env` file is missing or misconfigured
+- File permissions are incorrect
+- `APP_KEY` is not set
+- Web server configuration points to wrong directory
+
+### Database Connection Issues
+
+Verify database credentials:
+
+```bash
+php artisan tinker
+
+# Test connection
+DB::connection()->getPdo();
+```
+
+## Security Best Practices
+
+<Warning>
+Follow these security practices:
+- Keep Laravel and dependencies updated
+- Use strong passwords and rotate them regularly
+- Enable HTTPS/SSL certificates
+- Set `APP_DEBUG=false` in production
+- Restrict database user permissions
+- Implement rate limiting
+- Regular security audits
+</Warning>
+
+## Next Steps
+
+- [Configure environment variables](/guides/configuration)
+- [Set up Docker deployment](/guides/docker)
+- [Review database schema](/guides/database-setup)

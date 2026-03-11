@@ -1,0 +1,247 @@
+---
+title: 'Authentication'
+description: 'Multi-role authentication system with Spatie Laravel Permission and Laravel Sanctum'
+---
+
+## Overview
+
+The Restaurant Management System implements a robust multi-role authentication system using:
+- **Laravel Sanctum** for API token authentication
+- **Spatie Laravel Permission** for role-based access control (RBAC)
+- **Laravel Jetstream** for authentication scaffolding
+
+## User Model
+
+The User model extends Laravel's Authenticatable class and integrates multiple traits for comprehensive authentication features.
+
+```php app/Models/User.php
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Spatie\Permission\Traits\HasRoles;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasFactory, Notifiable, HasRoles;
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+}
+```
+
+<Note>
+The `HasRoles` trait from Spatie provides methods like `hasRole()`, `hasAnyRole()`, and `assignRole()` for role management.
+</Note>
+
+## Available Roles
+
+The system supports three primary roles with distinct permissions:
+
+<Tabs>
+  <Tab title="Admin">
+    **Full System Access**
+    - User management (create, edit, delete users)
+    - Chef management
+    - View and manage all orders
+    - Access to all food, table, and reservation operations
+    - Complete dashboard access
+  </Tab>
+  <Tab title="Chef">
+    **Kitchen Operations**
+    - Manage food menu items (create, update, delete)
+    - View food categories
+    - Update profile information
+    - Limited to food-related operations
+  </Tab>
+  <Tab title="Mesero (Waiter)">
+    **Front-of-House Operations**
+    - Manage table status and assignments
+    - Handle reservations and table assignments
+    - View and update table availability
+    - Cannot access user or order management
+  </Tab>
+</Tabs>
+
+## Role-Based Middleware
+
+The system uses a custom `RoleMiddleware` that supports both Spatie roles and fallback usertype checking.
+
+### RoleMiddleware Implementation
+
+```php app/Http/Middleware/RoleMiddleware.php
+public function handle(Request $request, Closure $next, ...$roles)
+{
+    $user = Auth::user();
+
+    if (! $user) {
+        abort(403, 'No tienes permiso para acceder a esta página.');
+    }
+
+    // Normalize roles: can come as ['admin,chef,mesero'] or ['admin','chef']
+    $normalized = collect($roles)
+        ->flatMap(function ($r) {
+            if (is_null($r) || $r === '') {
+                return [];
+            }
+            return array_map('trim', explode(',', $r));
+        })
+        ->filter()
+        ->unique()
+        ->values()
+        ->all();
+
+    // If Spatie is available, use its helpers
+    if (method_exists($user, 'hasAnyRole')) {
+        if ($user->hasAnyRole($normalized)) {
+            return $next($request);
+        }
+    } else {
+        // fallback to usertype string
+        if (in_array($user->usertype, $normalized, true)) {
+            return $next($request);
+        }
+    }
+
+    abort(403, 'No tienes permiso para acceder a esta página.');
+}
+```
+
+### Route Protection
+
+Routes are protected using middleware with role specifications:
+
+```php routes/web.php
+// Admin panel - accessible by admin, chef, or mesero
+Route::prefix('admin')->name('admin.')
+    ->middleware(['auth','role:admin,chef,mesero'])
+    ->group(function () {
+
+    // Dashboard accessible by all authenticated roles
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])
+        ->name('dashboard');
+
+    // Admin-only routes
+    Route::middleware('role:admin')->group(function () {
+        Route::resource('users', AdminUserController::class);
+        Route::resource('chefs', AdminChefController::class);
+    });
+
+    // Admin and Chef can manage food
+    Route::middleware('role:admin,chef')->group(function () {
+        Route::resource('foods', AdminFoodController::class);
+    });
+
+    // Mesero and Admin can manage tables and reservations
+    Route::middleware('role:admin,mesero')->group(function () {
+        Route::resource('tables', AdminTableController::class);
+        Route::get('reservations', [AdminReservationController::class, 'index']);
+    });
+});
+```
+
+## Post-Login Redirection
+
+After successful authentication, users are redirected based on their role:
+
+```php app/Http/Controllers/HomeController.php
+public function redirects(Request $request)
+{
+    $user = Auth::user();
+    if (! $user) {
+        return redirect()->route('home');
+    }
+
+    // Prefer Spatie roles if exists
+    if (method_exists($user, 'hasRole')) {
+        if ($user->hasAnyRole(['admin','chef','mesero'])) {
+            return redirect()->route('admin.dashboard');
+        }
+    }
+    
+    // Fallback to usertype column
+    switch ($user->usertype ?? null) {
+        case 'admin':
+            return redirect()->route('admin.dashboard');
+        case 'chef':
+            return redirect()->route('chef.dashboard');
+        case 'mesero':
+            return redirect()->route('mesero.dashboard');
+        default:
+            return redirect()->route('home');
+    }
+}
+```
+
+<Note>
+The redirect logic first checks for Spatie's `hasRole()` method, then falls back to a `usertype` column for backward compatibility.
+</Note>
+
+## Authentication Flow
+
+<Accordion title="User Registration & Login">
+  1. **Registration**: New users register through Laravel Jetstream's registration form
+  2. **Role Assignment**: Admins assign roles to users through the admin panel
+  3. **Login**: Users authenticate with email and password
+  4. **Redirection**: System redirects based on assigned role
+  5. **Session Management**: Laravel Sanctum manages API tokens and sessions
+</Accordion>
+
+<Accordion title="Protected Routes">
+  All admin panel routes require authentication:
+  ```php
+  Route::middleware(['auth','role:admin,chef,mesero'])->group(function () {
+      // Protected routes here
+  });
+  ```
+  
+  Cart and order routes require basic authentication:
+  ```php
+  Route::middleware(['auth'])->group(function () {
+      Route::get('/cart', [CartController::class, 'index']);
+      Route::post('/orderconfirm', [HomeController::class, 'orderConfirm']);
+  });
+  ```
+</Accordion>
+
+## API Token Authentication
+
+The system uses Laravel Sanctum for API token management:
+
+<ParamField path="HasApiTokens" type="trait">
+  Provides token generation and validation methods for API authentication
+</ParamField>
+
+<ParamField path="auth:sanctum" type="middleware">
+  Protects API routes and validates bearer tokens
+</ParamField>
+
+## Security Features
+
+- **Password Hashing**: Automatic bcrypt hashing via `password` cast
+- **Email Verification**: Built-in email verification support
+- **CSRF Protection**: Laravel's built-in CSRF middleware
+- **Remember Token**: Secure "remember me" functionality
+- **Role Validation**: Middleware prevents unauthorized access
+
+## Best Practices
+
+<Note type="warning">
+**Important**: Always assign roles to new users immediately after creation to ensure proper access control.
+</Note>
+
+1. **Use Spatie Permission**: Leverage `hasRole()` and `hasAnyRole()` for role checks
+2. **Middleware Protection**: Apply role middleware to all sensitive routes
+3. **Graceful Fallback**: Implement usertype fallback for legacy support
+4. **Centralized Redirects**: Use the `redirects()` method for consistent post-login behavior
+5. **Audit Logs**: Consider logging role assignments and permission changes

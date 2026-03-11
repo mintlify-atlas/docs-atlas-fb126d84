@@ -1,0 +1,170 @@
+---
+title: 'Food Model'
+description: 'Food model for managing menu items with categories, nutritional information, and pricing'
+---
+
+## Overview
+
+The `Food` model represents menu items in the restaurant management system. It includes details about food items such as title, price, description, nutritional information, and category relationships.
+
+## Table Information
+
+<ParamField path="table" type="string">
+  **Table Name:** `food`
+</ParamField>
+
+## Model Definition
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Food extends Model
+{
+    use HasFactory;
+
+    protected $table = 'food';
+
+    protected $fillable = [
+        'title',
+        'price',
+        'image',
+        'description',
+        'ingredients',
+        'proteins',
+        'calories',
+        'size',
+        'category_id'
+    ];
+}
+```
+
+## Fillable Fields
+
+<ParamField path="title" type="string" required>
+  The name/title of the food item
+  - **Validation:** Required, max 255 characters
+  - **Example:** "Grilled Salmon"
+</ParamField>
+
+<ParamField path="price" type="decimal" required>
+  The price of the food item
+  - **Database Type:** `decimal(8, 2)`
+  - **Validation:** Required, numeric, minimum 0
+  - **Example:** 25.99
+</ParamField>
+
+<ParamField path="image" type="string">
+  Path to the food item image
+  - **Validation:** Nullable, image file, max 2048KB
+  - **Example:** "images/food/salmon.jpg"
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of the food item
+  - **Validation:** Nullable, string
+  - **Example:** "Fresh grilled salmon with lemon butter sauce"
+</ParamField>
+
+<ParamField path="ingredients" type="text">
+  List of ingredients used in the dish
+  - **Validation:** Nullable, string, max 500 characters
+  - **Example:** "Salmon, butter, lemon, herbs"
+</ParamField>
+
+<ParamField path="proteins" type="string">
+  Protein content information
+  - **Validation:** Nullable, string, max 255 characters
+  - **Example:** "35g"
+</ParamField>
+
+<ParamField path="calories" type="integer">
+  Calorie count of the dish
+  - **Validation:** Nullable, numeric, minimum 0
+  - **Example:** 450
+</ParamField>
+
+<ParamField path="size" type="string">
+  Size/portion information
+  - **Validation:** Nullable, string, max 50 characters
+  - **Example:** "Medium", "Large"
+</ParamField>
+
+<ParamField path="category_id" type="unsignedBigInteger">
+  Foreign key reference to the categories table
+  - **Validation:** Nullable, must exist in categories table
+  - **Database Constraint:** Foreign key with `SET NULL` on delete
+  - **Example:** 1
+</ParamField>
+
+## Relationships
+
+### belongsTo: Category
+
+<Expandable title="category()">
+  Each food item belongs to a single category.
+
+  ```php
+  public function category()
+  {
+      return $this->belongsTo(Category::class);
+  }
+  ```
+
+  <ResponseField name="Usage Example" type="code">
+    ```php
+    $food = Food::find(1);
+    $category = $food->category;
+    echo $category->name;
+    ```
+  </ResponseField>
+</Expandable>
+
+## Validation Rules
+
+The `StoreFoodRequest` defines the following validation rules:
+
+```php
+public function rules()
+{
+    return [
+        'title' => 'required|string|max:255',
+        'price' => 'required|numeric|min:0',
+        'description' => 'nullable|string',
+        'ingredients' => 'nullable|string|max:500',
+        'proteins' => 'nullable|string|max:255',
+        'calories' => 'nullable|numeric|min:0',
+        'size' => 'nullable|string|max:50',
+        'category_id' => 'nullable|exists:categories,id',
+        'image' => 'nullable|image|max:2048',
+    ];
+}
+```
+
+## Database Schema
+
+```php
+Schema::create('food', function (Blueprint $table) {
+    $table->id();
+    $table->string("title")->nullable();
+    $table->decimal('price', 8, 2)->nullable();
+    $table->string("image")->nullable();
+    $table->string("description")->nullable();
+    $table->text('ingredients')->nullable();
+    $table->string('proteins')->nullable();
+    $table->integer('calories')->nullable();
+    $table->string('size')->nullable();
+    $table->foreignId('category_id')
+          ->nullable()
+          ->constrained('categories')
+          ->onDelete('set null');
+    $table->timestamps();
+});
+```
+
+## Timestamps
+
+- `created_at`: Automatically set when the record is created
+- `updated_at`: Automatically updated when the record is modified

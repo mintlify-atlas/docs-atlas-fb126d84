@@ -1,0 +1,488 @@
+---
+title: 'Waiter Role (Mesero)'
+description: 'Complete guide to waiter permissions, table management, and reservation workflows in the Restaurant Management System'
+icon: 'user-tie'
+---
+
+## Overview
+
+The **Waiter** (Mesero) role is designed for front-of-house staff who manage table assignments, handle reservations, and coordinate customer seating. Waiters have a dedicated dashboard and access to table management features.
+
+<Info>
+Waiter access is controlled through the `RoleMiddleware` using the `mesero` role identifier, ensuring only authorized staff can manage tables and reservations.
+</Info>
+
+## Role-Based Access Control
+
+Waiter routes are protected by middleware that validates mesero credentials:
+
+```php
+// routes/mesero.php - Line 7
+Route::middleware(['auth', 'role:mesero'])->prefix('mesero')->group(function () {
+    Route::get('/home', fn() => view('mesero.meserohome'))->name('mesero.home');
+    Route::get('/tables', [MeseroController::class, 'viewTables']);
+    Route::get('/reservations', [MeseroController::class, 'meseroviewreservation']);
+});
+```
+
+### Shared Admin Panel Access
+
+Waiters also have access to specific sections of the unified admin panel:
+
+```php
+// routes/web.php - Lines 86-99
+// Tables - shared with admin
+Route::middleware('role:admin,mesero')->group(function () {
+    Route::resource('tables', AdminTableController::class)->names('tables');
+    Route::post('tables/{table}/mark-as-used', [AdminTableController::class, 'markAsUsed']);
+});
+
+// Reservations - shared with admin
+Route::middleware('role:admin,mesero')->group(function () {
+    Route::get('reservations', [AdminReservationController::class, 'index']);
+    Route::post('reservations/{reservation}/assign-table', 
+                [AdminReservationController::class, 'assignTable']);
+});
+```
+
+## Waiter Dashboard
+
+Waiters have access to their dedicated home page:
+
+```php
+// routes/mesero.php - Line 9
+Route::get('/home', fn() => view('mesero.meserohome'))->name('mesero.home');
+```
+
+**Dashboard Route:**
+```bash
+GET /mesero/home
+```
+
+## Table Management
+
+<CardGroup cols={2}>
+  <Card title="View Tables" icon="table-list">
+    Browse all restaurant tables with current status and capacity.
+  </Card>
+  <Card title="Create Tables" icon="plus">
+    Add new tables with seating capacity and type.
+  </Card>
+  <Card title="Update Tables" icon="pen">
+    Modify table details and change status.
+  </Card>
+  <Card title="Mark as Used" icon="check">
+    Update table status when customers are seated.
+  </Card>
+</CardGroup>
+
+### Table Routes
+
+```php
+// routes/mesero.php - Lines 12-15
+Route::get('/tables', [MeseroController::class, 'viewTables'])->name('mesero.tables');
+Route::post('/tables', [MeseroController::class, 'storeTable'])->name('mesero.tables.store');
+Route::put('/tables/{id}', [MeseroController::class, 'updateTable'])->name('mesero.tables.update');
+Route::delete('/tables/{id}', [MeseroController::class, 'deleteTable'])->name('mesero.tables.delete');
+```
+
+### Viewing Tables
+
+```php
+// app/Http/Controllers/MeseroController.php - Lines 11-15
+public function viewTables()
+{
+    $tables = Table::all();
+    return view('mesero.meseromesas', compact('tables'));
+}
+```
+
+### Creating Tables
+
+<Steps>
+  <Step title="Navigate to Tables Section">
+    Access the table management page at `/mesero/tables`.
+  </Step>
+  <Step title="Fill Table Details">
+    Provide table name, number, type, seating capacity, and initial status.
+  </Step>
+  <Step title="Validate Information">
+    System checks for duplicate table numbers and validates all fields.
+  </Step>
+  <Step title="Save Table">
+    The new table is created and immediately available for assignment.
+  </Step>
+</Steps>
+
+```php
+// app/Http/Controllers/MeseroController.php - Lines 17-30
+public function storeTable(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number',
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string',
+    ]);
+
+    Table::create($request->all());
+
+    return redirect()->route('meseromesas')
+        ->with('success', 'Mesa agregada correctamente.');
+}
+```
+
+### Updating Tables
+
+```php
+// app/Http/Controllers/MeseroController.php - Lines 32-53
+public function updateTable(Request $request, $id)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'number' => 'required|integer|unique:tables,number,' . $id,
+        'type' => 'required|string',
+        'seats' => 'required|integer',
+        'status' => 'required|string|in:available,occupied,reservada',
+    ]);
+
+    $table = Table::findOrFail($id);
+
+    $table->name = $request->input('name');
+    $table->number = $request->input('number');
+    $table->type = $request->input('type');
+    $table->seats = $request->input('seats');
+    $table->status = $request->input('status');
+    $table->save();
+
+    return redirect()->route('meseromesas')
+        ->with('success', 'Mesa actualizada correctamente.');
+}
+```
+
+### Table Statuses
+
+Tables can have three different statuses:
+
+- **available** - Table is clean and ready for customers
+- **occupied** - Table is currently in use
+- **reservada** - Table is reserved for upcoming reservation
+
+### Marking Tables as Used
+
+```php
+// routes/mesero.php - Line 22
+Route::post('/tables/{id}/mark-as-used', [TableController::class, 'markAsUsed'])
+    ->name('mesero.tables.used');
+```
+
+## Reservation Management
+
+Waiters can view all reservations and assign available tables to guests.
+
+### Reservation Routes
+
+```php
+// routes/mesero.php - Lines 18-19
+Route::get('/reservations', [MeseroController::class, 'meseroviewreservation'])
+    ->name('mesero.reservations');
+Route::post('/reservations/{reservationId}/assign-table', 
+             [MeseroController::class, 'assignTable'])
+    ->name('mesero.reservations.assign');
+```
+
+### Viewing Reservations
+
+```php
+// app/Http/Controllers/MeseroController.php - Lines 62-70
+public function meseroviewreservation()
+{
+    // Get all reservations with assigned tables
+    $reservations = Reservation::with('table')->get();
+    // Get available tables for assignment
+    $tables = Table::where('status', 'disponible')->get();
+
+    return view('mesero.meseroreservation', compact('reservations', 'tables'));
+}
+```
+
+### Assigning Tables to Reservations
+
+<Steps>
+  <Step title="Check Reservation Details">
+    Review guest name, party size, date, and time of the reservation.
+  </Step>
+  <Step title="Find Matching Table">
+    Select a table where the seating capacity matches the guest count.
+  </Step>
+  <Step title="Assign Table">
+    Submit the table assignment - the system validates capacity match.
+  </Step>
+  <Step title="Confirm Assignment">
+    Table status changes to 'reservada' and is linked to the reservation.
+  </Step>
+</Steps>
+
+```php
+// app/Http/Controllers/MeseroController.php - Lines 73-99
+public function assignTable(Request $request, $reservationId)
+{
+    $reservation = Reservation::findOrFail($reservationId);
+    $table = Table::findOrFail($request->table_id);
+
+    // Verify guest count matches table capacity
+    if ($reservation->guest == $table->seats) {
+        // Assign table to reservation
+        $reservation->table_id = $table->id;
+        $reservation->save();
+
+        // Mark table as reserved
+        $table->status = 'reservada';
+        $table->save();
+
+        return response()->json([
+            'success' => true,
+            'table_name' => $table->name,
+            'user_name' => $reservation->name,
+        ]);
+    } else {
+        return response()->json([
+            'success' => false,
+            'message' => 'El número de invitados no coincide con los asientos de la mesa.',
+        ]);
+    }
+}
+```
+
+<Info>
+The system automatically validates that the number of guests in the reservation matches the seating capacity of the selected table before completing the assignment.
+</Info>
+
+### Deleting Tables
+
+```php
+// app/Http/Controllers/MeseroController.php - Lines 55-61
+public function deleteTable($id)
+{
+    $table = Table::findOrFail($id);
+    $table->delete();
+
+    return redirect()->route('meseromesas')
+        ->with('success', 'Mesa eliminada correctamente.');
+}
+```
+
+## Available Permissions
+
+<CardGroup cols={2}>
+  <Card title="Table Management" icon="table-picnic">
+    Full CRUD operations on restaurant tables
+  </Card>
+  <Card title="Reservation Assignment" icon="calendar-check">
+    Assign available tables to reservations
+  </Card>
+  <Card title="Status Updates" icon="arrows-rotate">
+    Change table status (available, occupied, reserved)
+  </Card>
+  <Card title="Capacity Validation" icon="users">
+    Automatic validation of guest count vs. table capacity
+  </Card>
+</CardGroup>
+
+## Waiter Workflows
+
+### Daily Opening Workflow
+
+<Steps>
+  <Step title="Review Table Status">
+    Check all tables at `/mesero/tables` and ensure statuses are accurate.
+  </Step>
+  <Step title="Reset Tables">
+    Update any 'occupied' tables from the previous day to 'available'.
+  </Step>
+  <Step title="Check Reservations">
+    Review today's reservations at `/mesero/reservations`.
+  </Step>
+  <Step title="Pre-assign Tables">
+    Assign tables to confirmed reservations before service begins.
+  </Step>
+  <Step title="Prepare Floor Plan">
+    Verify table arrangements match the system configuration.
+  </Step>
+</Steps>
+
+### Guest Seating Workflow
+
+<Steps>
+  <Step title="Greet Guests">
+    Determine party size and check for reservations.
+  </Step>
+  <Step title="Check Table Availability">
+    Find a table with appropriate capacity and 'available' status.
+  </Step>
+  <Step title="Assign Table">
+    If reservation exists, assign table through system. Otherwise, mark table as used.
+  </Step>
+  <Step title="Update Status">
+    Change table status to 'occupied' once guests are seated.
+  </Step>
+  <Step title="Service Coordination">
+    Coordinate with kitchen and other staff for order taking.
+  </Step>
+</Steps>
+
+### Reservation Handling Workflow
+
+<Steps>
+  <Step title="Monitor Reservations">
+    Keep the reservations page open to track upcoming arrivals.
+  </Step>
+  <Step title="15-Minute Warning">
+    Check for reservations arriving within the next 15 minutes.
+  </Step>
+  <Step title="Prepare Table">
+    If not already assigned, select and assign appropriate table.
+  </Step>
+  <Step title="Guest Arrival">
+    Greet guests by name and escort to their reserved table.
+  </Step>
+  <Step title="Update Status">
+    Mark table as 'occupied' once guests are seated.
+  </Step>
+</Steps>
+
+### Table Turnover Workflow
+
+<Steps>
+  <Step title="Clear Table">
+    Coordinate with bus staff to clear and clean the table.
+  </Step>
+  <Step title="Inspect Table">
+    Verify table is clean and properly set.
+  </Step>
+  <Step title="Update Status">
+    Change table status from 'occupied' to 'available'.
+  </Step>
+  <Step title="Check Waitlist">
+    Immediately check for waiting guests or upcoming reservations.
+  </Step>
+  <Step title="Assign Next Guest">
+    Seat next party or mark as available for walk-ins.
+  </Step>
+</Steps>
+
+## Table Structure
+
+Each table includes the following information:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| name | string | Yes | Display name of the table |
+| number | integer | Yes | Unique table number |
+| type | string | Yes | Table type (booth, regular, outdoor, etc.) |
+| seats | integer | Yes | Seating capacity |
+| status | string | Yes | Current status (available, occupied, reservada) |
+
+## API Examples
+
+### Create a Table
+
+```bash
+POST /mesero/tables
+Content-Type: application/json
+
+{
+  "name": "Table 15",
+  "number": 15,
+  "type": "booth",
+  "seats": 4,
+  "status": "available"
+}
+```
+
+### Update Table Status
+
+```bash
+PUT /mesero/tables/5
+Content-Type: application/json
+
+{
+  "name": "Table 5",
+  "number": 5,
+  "type": "regular",
+  "seats": 6,
+  "status": "occupied"
+}
+```
+
+### Assign Table to Reservation
+
+```bash
+POST /mesero/reservations/12/assign-table
+Content-Type: application/json
+
+{
+  "table_id": 8
+}
+
+Response (Success):
+{
+  "success": true,
+  "table_name": "Table 8",
+  "user_name": "John Smith"
+}
+
+Response (Failure):
+{
+  "success": false,
+  "message": "El número de invitados no coincide con los asientos de la mesa."
+}
+```
+
+### Mark Table as Used
+
+```bash
+POST /mesero/tables/5/mark-as-used
+```
+
+## Security Features
+
+<Info>
+All waiter routes are protected by the `auth` and `role:mesero` middleware, ensuring only authenticated waiters can manage tables and reservations.
+</Info>
+
+### Unique Table Numbers
+
+The system enforces unique table numbers to prevent conflicts:
+
+```php
+'number' => 'required|integer|unique:tables,number'
+```
+
+When updating, the validation excludes the current table:
+
+```php
+'number' => 'required|integer|unique:tables,number,' . $id
+```
+
+### Capacity Validation
+
+Automatic validation ensures guests are assigned to appropriately sized tables:
+
+```php
+if ($reservation->guest == $table->seats) {
+    // Allow assignment
+} else {
+    // Reject assignment
+}
+```
+
+## Best Practices
+
+1. **Regular Status Updates** - Keep table statuses current to avoid confusion
+2. **Pre-assign Reservations** - Assign tables to reservations before guests arrive
+3. **Match Capacity** - Always assign tables with appropriate seating for party size
+4. **Quick Turnover** - Update table status to 'available' as soon as it's ready
+5. **Monitor Reservations** - Check the reservation list frequently during busy periods
+6. **Coordinate with Staff** - Communicate table assignments with other waiters and kitchen staff

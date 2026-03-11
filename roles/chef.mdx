@@ -1,0 +1,421 @@
+---
+title: 'Chef Role'
+description: 'Complete guide to chef permissions, menu management, and profile features in the Restaurant Management System'
+icon: 'hat-chef'
+---
+
+## Overview
+
+The **Chef** role is designed for kitchen staff who manage the restaurant's food menu. Chefs can create, update, and delete menu items, manage their professional profiles, and have access to a dedicated dashboard.
+
+<Info>
+Chef access is controlled through the `RoleMiddleware`, which validates chef credentials before granting access to menu management features.
+</Info>
+
+## Role-Based Access Control
+
+Chef routes are protected by middleware that ensures only authenticated chefs can access menu management:
+
+```php
+// routes/chef.php - Line 6
+Route::middleware(['auth', 'role:chef'])->prefix('chef')->group(function () {
+    // Chef-specific routes
+    Route::get('/profile', [ChefController::class, 'showProfile']);
+    Route::get('/menu', [ChefController::class, 'cheffoodmenu']);
+    Route::post('/menu', [ChefController::class, 'uploadfoodchef']);
+});
+```
+
+### Shared Admin Panel Access
+
+Chefs also have access to the unified admin panel for food management:
+
+```php
+// routes/web.php - Lines 77-79
+Route::middleware('role:admin,chef')->group(function () {
+    Route::resource('foods', AdminFoodController::class)->names('foods');
+});
+```
+
+## Chef Dashboard
+
+Chefs have access to the shared admin dashboard where they can see system statistics and navigate to menu management:
+
+```php
+// routes/web.php - Line 60
+Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+```
+
+**Dashboard Route:**
+```bash
+GET /admin/dashboard
+```
+
+## Menu Management
+
+<CardGroup cols={2}>
+  <Card title="View Menu" icon="book-open">
+    Browse all food items with categories and pricing.
+  </Card>
+  <Card title="Create Items" icon="plus">
+    Add new dishes with images, ingredients, and nutritional info.
+  </Card>
+  <Card title="Update Items" icon="pen">
+    Modify existing menu items, prices, and descriptions.
+  </Card>
+  <Card title="Delete Items" icon="trash">
+    Remove discontinued items from the menu.
+  </Card>
+</CardGroup>
+
+### Menu Routes
+
+```php
+// routes/chef.php - Lines 14-18
+Route::get('/menu', [ChefController::class, 'cheffoodmenu'])->name('chef.menu');
+Route::post('/menu', [ChefController::class, 'uploadfoodchef'])->name('chef.menu.store');
+Route::get('/menu/{id}/edit', [ChefController::class, 'chefupdateview'])->name('chef.menu.edit');
+Route::post('/menu/{id}', [ChefController::class, 'updatechef'])->name('chef.menu.update');
+Route::delete('/menu/{id}', [ChefController::class, 'chefdeletemenu'])->name('chef.menu.delete');
+```
+
+### Creating Menu Items
+
+<Steps>
+  <Step title="Navigate to Menu Section">
+    Access the menu management page at `/chef/menu`.
+  </Step>
+  <Step title="Fill Item Details">
+    Provide title, price, description, ingredients, proteins, calories, portion size, and category.
+  </Step>
+  <Step title="Upload Image">
+    Add an appetizing photo of the dish (JPG, PNG, JPEG, or GIF, max 2MB).
+  </Step>
+  <Step title="Submit Form">
+    The system validates and saves the menu item to the database.
+  </Step>
+</Steps>
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 38-43
+public function uploadfoodchef(Request $request)
+{
+    $food = new Food();
+    $this->saveFood($food, $request);
+    return redirect()->route('cheffoodmenu')->with('success', 'Menú agregado correctamente.');
+}
+```
+
+### Menu Item Validation
+
+All menu items are validated before being saved:
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 52-76
+protected function saveFood(Food $food, Request $request)
+{
+    $validated = $request->validate([
+        'title' => 'required|string|max:255',
+        'price' => 'required|numeric',
+        'description' => 'required|string',
+        'ingredients' => 'nullable|string',
+        'proteins' => 'nullable|string',
+        'calories' => 'nullable|integer',
+        'size' => 'nullable|string',
+        'category_id' => 'nullable|exists:categories,id',
+        'image' => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
+    ]);
+
+    $food->fill($validated);
+
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $imageName = time() . '.' . $image->getClientOriginalExtension();
+        $image->move(public_path('foodimage'), $imageName);
+        $food->image = $imageName;
+    }
+
+    $food->save();
+}
+```
+
+### Updating Menu Items
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 31-36
+public function updatechef(Request $request, $id)
+{
+    $food = Food::findOrFail($id);
+    $this->saveFood($food, $request);
+    return redirect()->route('cheffoodmenu')->with('success', 'Menú actualizado correctamente.');
+}
+```
+
+### Deleting Menu Items
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 45-49
+public function chefdeletemenu($id)
+{
+    Food::findOrFail($id)->delete();
+    return redirect()->back()->with('success', 'Menú eliminado correctamente.');
+}
+```
+
+## Chef Profile Management
+
+Chefs can create and manage their professional profiles with specialties and work areas.
+
+### Profile Routes
+
+```php
+// routes/chef.php - Lines 9-11
+Route::get('/profile', [ChefController::class, 'showProfile'])->name('chef.profile');
+Route::post('/profile', [ChefController::class, 'storeProfile'])->name('chef.profile.store');
+Route::post('/profile/update', [ChefController::class, 'updateProfile'])->name('chef.profile.update');
+```
+
+### Viewing Profile
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 82-91
+public function showProfile()
+{
+    $user = Auth::user();
+    if ($user->usertype !== 'chef') {
+        return redirect()->route('home')
+            ->with('error', 'No tienes permiso para acceder a esta página.');
+    }
+
+    $chefProfile = $user->chef;
+    return view('chef.chefprofile', compact('chefProfile'));
+}
+```
+
+### Creating Chef Profile
+
+<Steps>
+  <Step title="Access Profile Page">
+    Navigate to `/chef/profile` to view or create your profile.
+  </Step>
+  <Step title="Enter Professional Details">
+    Provide first name, last name, specialty, description, and work area.
+  </Step>
+  <Step title="Select Work Area">
+    Choose from: preparacion, cocinar, servir, almacenamiento, lavar, or pedidos.
+  </Step>
+  <Step title="Upload Photo">
+    Add a professional photo (JPEG, PNG, JPG, or GIF, max 2MB).
+  </Step>
+  <Step title="Save Profile">
+    The profile is linked to your user account automatically.
+  </Step>
+</Steps>
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 93-101
+public function storeProfile(Request $request)
+{
+    $chef = new Chef();
+    $this->saveChefProfile($chef, $request);
+    $chef->user_id = Auth::id();
+    $chef->save();
+
+    return redirect()->route('chef.profile')->with('success', 'Perfil creado con éxito.');
+}
+```
+
+### Profile Validation
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 117-138
+protected function saveChefProfile(Chef $chef, Request $request)
+{
+    $validated = $request->validate([
+        'first_name' => 'required|string|max:255',
+        'last_name' => 'required|string|max:255',
+        'specialty' => 'required|string|max:255',
+        'description' => 'nullable|string',
+        'area' => 'required|in:preparacion,cocinar,servir,almacenamiento,lavar,pedidos',
+        'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+    ]);
+
+    $chef->fill($validated);
+
+    if ($request->hasFile('image')) {
+        $image = $request->file('image');
+        $imageName = time() . '.' . $image->getClientOriginalExtension();
+        $image->move(public_path('chefimage'), $imageName);
+        $chef->image = $imageName;
+    }
+
+    $chef->save();
+}
+```
+
+### Work Areas
+
+Chefs can specify their primary work area:
+
+- **preparacion** - Food preparation and mise en place
+- **cocinar** - Main cooking and dish assembly
+- **servir** - Plating and serving
+- **almacenamiento** - Storage and inventory management
+- **lavar** - Cleaning and sanitation
+- **pedidos** - Order management and coordination
+
+### Updating Profile
+
+```php
+// app/Http/Controllers/ChefController.php - Lines 103-114
+public function updateProfile(Request $request)
+{
+    $chef = Auth::user()->chef;
+
+    if (!$chef) {
+        return redirect()->route('chef.profile')
+            ->with('error', 'No tienes un perfil de chef para editar.');
+    }
+
+    $this->saveChefProfile($chef, $request);
+
+    return redirect()->route('chef.profile')->with('success', 'Perfil actualizado con éxito.');
+}
+```
+
+## Available Permissions
+
+<CardGroup cols={2}>
+  <Card title="Menu Management" icon="utensils">
+    Full CRUD operations on food menu items
+  </Card>
+  <Card title="Profile Management" icon="id-card">
+    Create and update personal chef profile
+  </Card>
+  <Card title="Category Access" icon="tags">
+    View and assign food categories
+  </Card>
+  <Card title="Dashboard Access" icon="gauge">
+    View system statistics and metrics
+  </Card>
+</CardGroup>
+
+## Chef Workflows
+
+### Daily Menu Update Workflow
+
+<Steps>
+  <Step title="Review Current Menu">
+    Navigate to `/chef/menu` to see all available dishes.
+  </Step>
+  <Step title="Check Inventory">
+    Verify ingredient availability for all menu items.
+  </Step>
+  <Step title="Update Availability">
+    Remove items that cannot be prepared due to missing ingredients.
+  </Step>
+  <Step title="Add Specials">
+    Create new menu items for daily specials or seasonal dishes.
+  </Step>
+  <Step title="Update Prices">
+    Modify pricing based on ingredient costs or management direction.
+  </Step>
+</Steps>
+
+### New Dish Creation Workflow
+
+<Steps>
+  <Step title="Recipe Development">
+    Create and test the new dish in the kitchen.
+  </Step>
+  <Step title="Calculate Nutrition">
+    Determine calories, proteins, and portion size.
+  </Step>
+  <Step title="Photography">
+    Take a high-quality photo of the finished dish.
+  </Step>
+  <Step title="Menu Entry">
+    Add the dish to the system with all details and pricing.
+  </Step>
+  <Step title="Category Assignment">
+    Assign appropriate category (appetizer, main course, dessert, etc.).
+  </Step>
+</Steps>
+
+## Menu Item Structure
+
+Each menu item includes the following information:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| title | string | Yes | Name of the dish |
+| price | numeric | Yes | Price in local currency |
+| description | string | Yes | Detailed description of the dish |
+| ingredients | string | No | List of main ingredients |
+| proteins | string | No | Protein content information |
+| calories | integer | No | Caloric content per serving |
+| size | string | No | Portion size description |
+| category_id | integer | No | Foreign key to categories table |
+| image | file | No | Photo of the dish (max 2MB) |
+
+## API Examples
+
+### Create Menu Item
+
+```bash
+POST /chef/menu
+Content-Type: multipart/form-data
+
+title=Grilled Salmon
+price=24.99
+description=Fresh Atlantic salmon with herbs
+ingredients=Salmon, herbs, olive oil, lemon
+proteins=45g
+calories=350
+size=8oz
+category_id=3
+image=@salmon.jpg
+```
+
+### Update Menu Item
+
+```bash
+POST /chef/menu/5
+Content-Type: application/json
+
+{
+  "title": "Grilled Salmon (Updated)",
+  "price": 26.99,
+  "description": "Fresh Atlantic salmon with seasonal herbs"
+}
+```
+
+### Delete Menu Item
+
+```bash
+DELETE /chef/menu/5
+```
+
+## Security Features
+
+<Info>
+All chef routes are protected by the `auth` and `role:chef` middleware, ensuring only authenticated chefs can manage menu items.
+</Info>
+
+### User Type Validation
+
+The system checks the user's `usertype` field to ensure they have chef privileges:
+
+```php
+if ($user->usertype !== 'chef') {
+    return redirect()->route('home')
+        ->with('error', 'No tienes permiso para acceder a esta página.');
+}
+```
+
+### Image Upload Security
+
+Images are validated for type and size:
+- **Allowed formats:** JPG, PNG, JPEG, GIF
+- **Maximum size:** 2048 KB (2MB)
+- **Storage location:** `public/foodimage/` and `public/chefimage/`

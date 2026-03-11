@@ -1,0 +1,286 @@
+---
+title: 'CartController'
+description: 'Shopping cart management for authenticated users'
+icon: 'cart-shopping'
+---
+
+## Overview
+
+The `CartController` handles all shopping cart operations for authenticated users, including viewing cart items, adding products, and removing items.
+
+**Location:** `app/Http/Controllers/CartController.php`
+
+**Middleware:** `auth` (all routes require authentication)
+
+---
+
+## Methods
+
+### index()
+
+Display the authenticated user's shopping cart with all items.
+
+<ParamField path="return" type="View">
+  Returns the cart view with items and count
+</ParamField>
+
+**Route:** `GET /cart`
+
+**Route Name:** `cart.index`
+
+**Middleware:** `auth`
+
+**Implementation:**
+
+```php
+public function index(): View
+{
+    $user = Auth::user();
+    if (! $user) {
+        return redirect()->route('login');
+    }
+
+    // Asume relación user->cart() que hace belongsToMany o hasMany Cart::with('food')
+    $items = Cart::with('food')
+        ->where('user_id', $user->id)
+        ->get();
+
+    $count = $items->count();
+
+    return view('showcart', [
+        'items' => $items,
+        'count' => $count,
+    ]);
+}
+```
+
+**Response Data:**
+
+<ResponseField name="items" type="Collection">
+  Collection of Cart models with eager-loaded Food relationships
+  
+  Each cart item contains:
+  - `id` - Cart item ID
+  - `user_id` - User ID
+  - `food_id` - Food item ID
+  - `quantity` - Quantity in cart
+  - `food` - Related Food model with all details
+</ResponseField>
+
+<ResponseField name="count" type="integer">
+  Total number of items in the cart
+</ResponseField>
+
+**Security:**
+- Redirects to login if user is not authenticated
+- Only shows items belonging to the authenticated user
+
+---
+
+### store()
+
+Add a food item to the cart or update quantity if it already exists.
+
+<ParamField path="request" type="Request" required>
+  HTTP request with quantity
+</ParamField>
+
+<ParamField path="food" type="Food" required>
+  Food model instance (route-model binding)
+</ParamField>
+
+<ParamField path="return" type="RedirectResponse">
+  Redirects back with success/error message
+</ParamField>
+
+**Route:** `POST /cart/{food}`
+
+**Route Name:** `cart.store`
+
+**Middleware:** `auth`
+
+**Implementation:**
+
+```php
+public function store(Request $request, Food $food): RedirectResponse
+{
+    $request->validate([
+        'quantity' => 'required|integer|min:1',
+    ]);
+
+    $user = Auth::user();
+    if (! $user) {
+        return redirect()->route('login')->with('error', 'Debes iniciar sesión para añadir al carrito.');
+    }
+
+    // updateOrCreate para evitar duplicados
+    Cart::updateOrCreate(
+        ['user_id' => $user->id, 'food_id' => $food->id],
+        ['quantity' => $request->input('quantity')]
+    );
+
+    return redirect()->back()->with('success', 'Producto agregado al carrito.');
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="quantity" type="integer" required>
+  Quantity to add to cart (minimum: 1)
+</ParamField>
+
+**Request Example:**
+
+```json
+{
+  "quantity": 2
+}
+```
+
+**Behavior:**
+
+- Uses `updateOrCreate` to prevent duplicate cart entries
+- If the food item already exists in cart, updates the quantity
+- If the food item doesn't exist, creates a new cart entry
+- Validates that user is authenticated before processing
+
+**Response:**
+
+Redirects back to the previous page with a success message.
+
+**Security:**
+
+- Requires authentication
+- Associates cart items with the authenticated user
+- Route-model binding ensures the food item exists
+
+---
+
+### destroy()
+
+Remove an item from the cart.
+
+<ParamField path="cart" type="Cart" required>
+  Cart model instance (route-model binding)
+</ParamField>
+
+<ParamField path="return" type="RedirectResponse">
+  Redirects back with success message
+</ParamField>
+
+**Route:** `DELETE /cart/{cart}`
+
+**Route Name:** `cart.destroy`
+
+**Middleware:** `auth`
+
+**Implementation:**
+
+```php
+public function destroy(Cart $cart): RedirectResponse
+{
+    $user = Auth::user();
+    // Seguridad: solo el dueño puede eliminar
+    if (! $user || $cart->user_id !== $user->id) {
+        abort(403, 'No autorizado.');
+    }
+
+    $cart->delete();
+
+    return redirect()->back()->with('success', 'Item eliminado del carrito.');
+}
+```
+
+**Security:**
+
+- Requires authentication
+- Verifies that the cart item belongs to the authenticated user
+- Returns 403 Forbidden if user tries to delete another user's cart item
+
+**Response:**
+
+Redirects back to the previous page with a success message.
+
+**Error Handling:**
+
+- If cart item doesn't belong to user: `403 No autorizado`
+- If user is not authenticated: `403 No autorizado`
+
+---
+
+## Usage Examples
+
+### Add Item to Cart
+
+```html
+<form action="{{ route('cart.store', $food->id) }}" method="POST">
+    @csrf
+    <input type="number" name="quantity" value="1" min="1">
+    <button type="submit">Add to Cart</button>
+</form>
+```
+
+### Remove Item from Cart
+
+```html
+<form action="{{ route('cart.destroy', $cartItem->id) }}" method="POST">
+    @csrf
+    @method('DELETE')
+    <button type="submit">Remove</button>
+</form>
+```
+
+### Display Cart
+
+```php
+// In controller
+$items = Cart::with('food')->where('user_id', auth()->id())->get();
+
+// In view
+@foreach($items as $item)
+    <div>
+        <h3>{{ $item->food->title }}</h3>
+        <p>Price: ${{ $item->food->price }}</p>
+        <p>Quantity: {{ $item->quantity }}</p>
+        <p>Subtotal: ${{ $item->food->price * $item->quantity }}</p>
+    </div>
+@endforeach
+```
+
+---
+
+## Data Relationships
+
+### Cart Model
+
+The Cart model should have the following relationships:
+
+```php
+class Cart extends Model
+{
+    // Belongs to a user
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    // Belongs to a food item
+    public function food()
+    {
+        return $this->belongsTo(Food::class);
+    }
+}
+```
+
+### Database Schema
+
+The `carts` table should include:
+
+- `id` - Primary key
+- `user_id` - Foreign key to users table
+- `food_id` - Foreign key to foods table
+- `quantity` - Integer, quantity of items
+- `created_at` - Timestamp
+- `updated_at` - Timestamp
+
+**Unique Constraint:** `user_id` + `food_id` (prevents duplicate entries)

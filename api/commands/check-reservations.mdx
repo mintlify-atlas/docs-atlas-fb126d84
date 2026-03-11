@@ -1,0 +1,260 @@
+---
+title: 'Check Reservations Command'
+description: 'Automated command to check expired reservations and update table availability'
+---
+
+## Overview
+
+The `reservations:check` command is an automated task that processes expired reservations and updates the status of associated tables. This command runs hourly to ensure that tables are automatically marked as available once their reservation time has passed.
+
+## Command Signature
+
+```bash
+php artisan reservations:check
+```
+
+**Description:** Revisa las reservaciones y actualiza el estado de las mesas (Reviews reservations and updates table status)
+
+## What It Does
+
+The command performs the following operations:
+
+<Steps>
+  <Step title="Find Expired Reservations">
+    Queries all reservations where both the date and time are less than or equal to the current date/time.
+  </Step>
+  
+  <Step title="Update Table Status">
+    For each expired reservation, updates the associated table's status to `disponible` (available).
+  </Step>
+  
+  <Step title="Delete Reservations">
+    Removes the expired reservation records from the database.
+  </Step>
+  
+  <Step title="Log Result">
+    Outputs a success message indicating that expired reservations have been processed.
+  </Step>
+</Steps>
+
+## Implementation
+
+### Full Command Class
+
+```php
+<?php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use App\Models\Table;
+use App\Models\Reservation;
+use Carbon\Carbon;
+
+class CheckReservations extends Command
+{
+    protected $signature = 'reservations:check';
+    protected $description = 'Revisa las reservaciones y actualiza el estado de las mesas';
+
+    public function handle()
+    {
+        $now = Carbon::now();
+
+        // Encuentra las reservaciones pasadas
+        $expiredReservations = Reservation::where('date', '<=', $now->toDateString())
+            ->where('time', '<=', $now->toTimeString())
+            ->get();
+
+        foreach ($expiredReservations as $reservation) {
+            // Actualiza la mesa a disponible
+            $table = $reservation->table;
+            if ($table) {
+                $table->update(['status' => 'disponible']);
+            }
+
+            // Elimina la reservación
+            $reservation->delete();
+        }
+
+        $this->info('Reservaciones vencidas procesadas correctamente.');
+    }
+}
+```
+
+### How It Works
+
+1. **Current Time Reference**: Uses `Carbon::now()` to get the current date and time
+2. **Query Expired Reservations**: Finds reservations where:
+   - `date` is less than or equal to today's date
+   - `time` is less than or equal to the current time
+3. **Process Each Reservation**:
+   - Retrieves the associated `Table` model via the relationship
+   - Updates the table status to `disponible`
+   - Deletes the reservation record
+4. **Output**: Displays success message
+
+<Warning>
+  This command permanently deletes expired reservation records. Ensure you have proper logging or backups if you need to maintain historical reservation data.
+</Warning>
+
+## Manual Execution
+
+You can run this command manually at any time:
+
+```bash
+php artisan reservations:check
+```
+
+**Expected Output:**
+```
+Reservaciones vencidas procesadas correctamente.
+```
+
+## Scheduled Execution
+
+### Cron Schedule Configuration
+
+The command is configured to run automatically every hour in `app/Console/Kernel.php`:
+
+```php
+protected function schedule(Schedule $schedule): void
+{
+    $schedule->command('reservations:check')->hourly();
+}
+```
+
+### Setting Up Laravel Scheduler
+
+To enable automatic execution, you need to add a single cron entry to your server:
+
+```bash
+* * * * * cd /path-to-your-project && php artisan schedule:run >> /dev/null 2>&1
+```
+
+This cron entry runs Laravel's scheduler every minute, which then executes the `reservations:check` command hourly according to the schedule defined in the Kernel.
+
+<Steps>
+  <Step title="Edit Crontab">
+    Open your crontab editor:
+    ```bash
+    crontab -e
+    ```
+  </Step>
+  
+  <Step title="Add Scheduler Entry">
+    Add the Laravel scheduler cron entry:
+    ```bash
+    * * * * * cd /path-to-your-project && php artisan schedule:run >> /dev/null 2>&1
+    ```
+  </Step>
+  
+  <Step title="Save and Verify">
+    Save the crontab and verify it's active:
+    ```bash
+    crontab -l
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Make sure to replace `/path-to-your-project` with the actual absolute path to your Laravel application.
+</Note>
+
+## Output and Logging
+
+### Console Output
+
+When executed, the command outputs:
+- Success message: `"Reservaciones vencidas procesadas correctamente."`
+
+### Logging Recommendations
+
+While the command doesn't include built-in logging, you can monitor its execution:
+
+**View Scheduled Tasks:**
+```bash
+php artisan schedule:list
+```
+
+**Test Schedule Without Waiting:**
+```bash
+php artisan schedule:work
+```
+
+**Add Custom Logging:**
+
+You can extend the command to include logging:
+
+```php
+use Illuminate\Support\Facades\Log;
+
+public function handle()
+{
+    $now = Carbon::now();
+    $expiredReservations = Reservation::where('date', '<=', $now->toDateString())
+        ->where('time', '<=', $now->toTimeString())
+        ->get();
+
+    $count = $expiredReservations->count();
+    
+    foreach ($expiredReservations as $reservation) {
+        $table = $reservation->table;
+        if ($table) {
+            $table->update(['status' => 'disponible']);
+        }
+        $reservation->delete();
+    }
+
+    Log::info("Processed {$count} expired reservations");
+    $this->info('Reservaciones vencidas procesadas correctamente.');
+}
+```
+
+## Related Models
+
+- **Reservation Model**: See [Reservation API](/api/reservations/store) for reservation structure
+- **Table Model**: See [Tables API](/api/tables/index) for table management
+
+## Use Cases
+
+1. **Automatic Table Turnover**: Ensures tables become available automatically after reservation times pass
+2. **Database Maintenance**: Keeps the reservations table clean by removing old records
+3. **Real-time Availability**: Maintains accurate table availability status for new reservations
+4. **Staff Efficiency**: Reduces manual intervention needed to update table statuses
+
+## Troubleshooting
+
+### Command Not Running Automatically
+
+<Steps>
+  <Step title="Check Cron Entry">
+    Verify the cron entry is correct:
+    ```bash
+    crontab -l
+    ```
+  </Step>
+  
+  <Step title="Test Schedule">
+    Run the scheduler manually to test:
+    ```bash
+    php artisan schedule:run
+    ```
+  </Step>
+  
+  <Step title="Check Logs">
+    Review Laravel logs for errors:
+    ```bash
+    tail -f storage/logs/laravel.log
+    ```
+  </Step>
+</Steps>
+
+### No Reservations Being Processed
+
+- Verify there are expired reservations in the database
+- Check the system time is correct
+- Ensure the `Reservation` model has the correct table name and relationships
+
+<Warning>
+  The command uses `Carbon::now()` which respects your application's timezone setting in `config/app.php`. Ensure your timezone is configured correctly.
+</Warning>

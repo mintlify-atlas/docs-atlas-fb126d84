@@ -1,0 +1,568 @@
+---
+title: 'Docker Setup'
+description: 'Complete guide to running the Restaurant Management System with Docker'
+icon: 'docker'
+---
+
+## Overview
+
+The Restaurant Management System includes a production-ready Dockerfile that packages the Laravel application with Apache web server. This guide covers building, running, and deploying the application using Docker.
+
+## Dockerfile Overview
+
+The application uses a multi-stage build process with the following components:
+
+- **Base Image**: PHP 8.2 with Apache
+- **PHP Extensions**: PDO MySQL, PostgreSQL, GD, Zip, and more
+- **Frontend**: Node.js 18.x for asset compilation
+- **Web Server**: Apache with mod_rewrite enabled
+- **Port**: 8080 (Railway compatible)
+
+## Quick Start
+
+<Steps>
+  <Step title="Build Docker Image">
+    Build the Docker image from the project root:
+    
+    ```bash
+    docker build -t restaurant-management .
+    ```
+    
+    This process:
+    - Installs system dependencies
+    - Installs Composer and npm packages
+    - Compiles frontend assets with Vite
+    - Configures Apache
+  </Step>
+
+  <Step title="Run Container">
+    Run the container with environment variables:
+    
+    ```bash
+    docker run -d \
+      --name restaurant-app \
+      -p 8080:8080 \
+      -e APP_KEY="base64:your-app-key" \
+      -e DB_HOST="your-database-host" \
+      -e DB_DATABASE="restaurante" \
+      -e DB_USERNAME="your-username" \
+      -e DB_PASSWORD="your-password" \
+      restaurant-management
+    ```
+  </Step>
+
+  <Step title="Access Application">
+    Open your browser to:
+    
+    ```
+    http://localhost:8080
+    ```
+  </Step>
+</Steps>
+
+## Dockerfile Breakdown
+
+### Base Image and System Dependencies
+
+```dockerfile
+# Use PHP 8.2 with Apache
+FROM php:8.2-apache
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    unzip \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    libsodium-dev \
+    libpq-dev \
+    default-mysql-client \
+    default-libmysqlclient-dev \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev
+```
+
+<Note>
+The Dockerfile includes both MySQL and PostgreSQL client libraries for database flexibility.
+</Note>
+
+### PHP Extensions
+
+```dockerfile
+# Configure and install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip sodium
+```
+
+**Installed Extensions:**
+- `pdo_mysql` - MySQL database support
+- `pdo_pgsql` - PostgreSQL database support
+- `mbstring` - Multibyte string handling
+- `exif` - Image metadata reading
+- `pcntl` - Process control
+- `bcmath` - Arbitrary precision mathematics
+- `gd` - Image processing (with JPEG and FreeType)
+- `zip` - ZIP archive handling
+- `sodium` - Modern cryptography
+
+### Composer Installation
+
+```dockerfile
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+```
+
+Copies Composer from the official Composer image.
+
+### Node.js for Frontend Assets
+
+```dockerfile
+# Install Node.js 18.x
+RUN curl -sL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get update && apt-get install -y nodejs
+```
+
+Required for building Vite assets and Livewire components.
+
+### Apache Configuration
+
+```dockerfile
+# Configure Apache
+RUN a2enmod rewrite \
+    && sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
+```
+
+This:
+1. Enables `mod_rewrite` for Laravel routing
+2. Sets document root to `public/` directory
+
+### Application Setup
+
+```dockerfile
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy application files
+COPY . .
+
+# Set permissions
+RUN chown -R www-data:www-data storage bootstrap/cache
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader
+RUN npm install
+
+# Build frontend assets
+RUN npm run build
+
+# Expose port 8080
+EXPOSE 8080
+
+# Start Apache
+CMD ["apache2-foreground"]
+```
+
+<Warning>
+The Dockerfile includes `composer install --no-dev` which excludes development dependencies. This is optimal for production but not for development.
+</Warning>
+
+## Docker Compose Setup
+
+### Full Stack with MySQL
+
+Create a `docker-compose.yml` file:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: restaurant-app
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_NAME=Restaurant Management
+      - APP_ENV=production
+      - APP_KEY=${APP_KEY}
+      - APP_DEBUG=false
+      - APP_URL=http://localhost:8080
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=restaurante
+      - DB_USERNAME=restaurant_user
+      - DB_PASSWORD=secret
+    depends_on:
+      - db
+    networks:
+      - restaurant-network
+
+  db:
+    image: mysql:8.0
+    container_name: restaurant-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=restaurante
+      - MYSQL_USER=restaurant_user
+      - MYSQL_PASSWORD=secret
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - restaurant-network
+    ports:
+      - "3306:3306"
+
+volumes:
+  mysql-data:
+    driver: local
+
+networks:
+  restaurant-network:
+    driver: bridge
+```
+
+### Run with Docker Compose
+
+<Steps>
+  <Step title="Start Services">
+    ```bash
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Run Migrations">
+    ```bash
+    docker-compose exec app php artisan migrate --force
+    ```
+  </Step>
+
+  <Step title="Create Admin User">
+    ```bash
+    docker-compose exec app php artisan tinker
+    ```
+    
+    In Tinker:
+    ```php
+    $user = new App\Models\User();
+    $user->name = 'Admin';
+    $user->email = 'admin@restaurant.com';
+    $user->usertype = 'admin';
+    $user->password = bcrypt('password');
+    $user->save();
+    ```
+  </Step>
+
+  <Step title="Access Application">
+    Navigate to `http://localhost:8080`
+  </Step>
+</Steps>
+
+## Development Docker Setup
+
+For development with hot reload and debugging:
+
+```dockerfile Dockerfile.dev
+FROM php:8.2-apache
+
+# Install dependencies (same as production)
+RUN apt-get update && apt-get install -y \
+    git curl unzip libpng-dev libonig-dev libxml2-dev libzip-dev \
+    libsodium-dev libpq-dev default-mysql-client \
+    default-libmysqlclient-dev libfreetype6-dev libjpeg62-turbo-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip sodium
+
+# Install Xdebug for development
+RUN pecl install xdebug && docker-php-ext-enable xdebug
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Install Node.js
+RUN curl -sL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get update && apt-get install -y nodejs
+
+# Configure Apache
+RUN a2enmod rewrite \
+    && sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
+
+WORKDIR /var/www/html
+
+# Install dependencies with dev packages
+COPY composer.json composer.lock ./
+RUN composer install
+
+COPY package.json package-lock.json ./
+RUN npm install
+
+COPY . .
+
+RUN chown -R www-data:www-data storage bootstrap/cache
+
+EXPOSE 8080
+
+CMD ["apache2-foreground"]
+```
+
+```yaml docker-compose.dev.yml
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+    ports:
+      - "8080:8080"
+      - "5173:5173"  # Vite dev server
+```
+
+## Environment Variables
+
+### Required Variables
+
+```bash
+APP_KEY=base64:your-generated-key
+DB_HOST=db-hostname
+DB_DATABASE=restaurante
+DB_USERNAME=db-user
+DB_PASSWORD=db-password
+```
+
+### Optional Variables
+
+```bash
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=http://localhost:8080
+LOG_CHANNEL=stack
+SESSION_DRIVER=database
+CACHE_DRIVER=file
+QUEUE_CONNECTION=sync
+```
+
+<Note>
+Pass environment variables using `-e` flag or `--env-file`:
+```bash
+docker run --env-file .env.production restaurant-management
+```
+</Note>
+
+## Volume Mounting
+
+### Persist Storage
+
+```bash
+docker run -d \
+  -v $(pwd)/storage:/var/www/html/storage \
+  -v $(pwd)/.env:/var/www/html/.env \
+  restaurant-management
+```
+
+### Development with Live Reload
+
+```bash
+docker run -d \
+  -v $(pwd):/var/www/html \
+  -v /var/www/html/vendor \
+  -v /var/www/html/node_modules \
+  restaurant-management
+```
+
+## Railway Deployment
+
+The Dockerfile is optimized for Railway:
+
+<Steps>
+  <Step title="Connect Repository">
+    Connect your GitHub repository to Railway
+  </Step>
+
+  <Step title="Add Environment Variables">
+    In Railway dashboard, add:
+    
+    ```bash
+    APP_KEY=your-app-key
+    DB_CONNECTION=mysql
+    DB_HOST=${{MYSQL_HOST}}
+    DB_PORT=${{MYSQL_PORT}}
+    DB_DATABASE=${{MYSQL_DATABASE}}
+    DB_USERNAME=${{MYSQL_USER}}
+    DB_PASSWORD=${{MYSQL_PASSWORD}}
+    ```
+  </Step>
+
+  <Step title="Deploy">
+    Railway automatically detects the Dockerfile and deploys
+  </Step>
+
+  <Step title="Run Migrations">
+    In Railway CLI or dashboard:
+    
+    ```bash
+    railway run php artisan migrate --force
+    ```
+  </Step>
+</Steps>
+
+<Note>
+Port 8080 is exposed specifically for Railway's routing requirements.
+</Note>
+
+## Docker Commands Reference
+
+### Building
+
+<CodeGroup>
+```bash Build
+docker build -t restaurant-management .
+```
+
+```bash Build with tag
+docker build -t restaurant-management:v1.0 .
+```
+
+```bash Build without cache
+docker build --no-cache -t restaurant-management .
+```
+</CodeGroup>
+
+### Running
+
+<CodeGroup>
+```bash Run detached
+docker run -d -p 8080:8080 restaurant-management
+```
+
+```bash Run with name
+docker run -d --name restaurant-app -p 8080:8080 restaurant-management
+```
+
+```bash Run interactive
+docker run -it --rm restaurant-management bash
+```
+</CodeGroup>
+
+### Management
+
+<CodeGroup>
+```bash View logs
+docker logs restaurant-app
+
+# Follow logs
+docker logs -f restaurant-app
+```
+
+```bash Execute commands
+docker exec restaurant-app php artisan migrate
+docker exec -it restaurant-app bash
+```
+
+```bash Stop and remove
+docker stop restaurant-app
+docker rm restaurant-app
+```
+</CodeGroup>
+
+## Optimization Tips
+
+### Multi-stage Build
+
+For smaller images, use multi-stage builds:
+
+```dockerfile
+# Build stage
+FROM php:8.2-apache as builder
+
+WORKDIR /var/www/html
+COPY . .
+
+RUN composer install --no-dev --optimize-autoloader
+RUN npm install && npm run build
+
+# Production stage
+FROM php:8.2-apache
+
+WORKDIR /var/www/html
+COPY --from=builder /var/www/html .
+
+RUN a2enmod rewrite
+EXPOSE 8080
+CMD ["apache2-foreground"]
+```
+
+### .dockerignore
+
+Create `.dockerignore` to reduce build context:
+
+```text .dockerignore
+node_modules
+vendor
+.git
+.env
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+.phpunit.cache
+tests
+```
+
+## Troubleshooting
+
+### Permission Issues
+
+```bash
+# Fix storage permissions
+docker exec restaurant-app chown -R www-data:www-data storage bootstrap/cache
+docker exec restaurant-app chmod -R 775 storage bootstrap/cache
+```
+
+### Database Connection Failed
+
+```bash
+# Check if database container is running
+docker-compose ps
+
+# Test database connection
+docker-compose exec app php artisan tinker
+>>> DB::connection()->getPdo();
+```
+
+### Apache Not Starting
+
+```bash
+# Check logs
+docker logs restaurant-app
+
+# Verify Apache configuration
+docker exec restaurant-app apache2ctl -t
+```
+
+### Build Failures
+
+<Warning>
+Common causes:
+- Network issues downloading packages
+- Insufficient disk space
+- Invalid composer.json or package.json
+
+Solution: Build with `--no-cache` and check logs
+</Warning>
+
+## Next Steps
+
+- [Deploy to production](/guides/deployment)
+- [Configure environment](/guides/configuration)
+- [Set up database](/guides/database-setup)

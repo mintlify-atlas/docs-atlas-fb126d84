@@ -1,0 +1,268 @@
+---
+title: 'Chef Model'
+description: 'Chef model for managing chef profiles with specialties, areas, and user relationships'
+---
+
+## Overview
+
+The `Chef` model manages chef profiles in the restaurant management system. It stores personal information, specialties, work areas, and maintains a relationship with the user authentication system.
+
+## Table Information
+
+<ParamField path="table" type="string">
+  **Table Name:** `chefs`
+</ParamField>
+
+## Model Definition
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Chef extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'first_name',
+        'last_name',
+        'specialty',
+        'description',
+        'area',
+        'image',
+    ];
+}
+```
+
+## Fillable Fields
+
+<ParamField path="first_name" type="string" required>
+  Chef's first name
+  - **Database Type:** `string`
+  - **Validation:** Required, max 255 characters
+  - **Example:** "Gordon"
+</ParamField>
+
+<ParamField path="last_name" type="string">
+  Chef's last name
+  - **Database Type:** `string`
+  - **Validation:** Nullable, max 255 characters
+  - **Example:** "Ramsay"
+</ParamField>
+
+<ParamField path="specialty" type="string" required>
+  Chef's culinary specialty
+  - **Database Type:** `string`
+  - **Validation:** Required, max 255 characters
+  - **Example:** "Italian Cuisine", "Pastry Chef"
+</ParamField>
+
+<ParamField path="description" type="text">
+  Detailed description of the chef's background and experience
+  - **Database Type:** `text`
+  - **Validation:** Nullable
+  - **Example:** "Award-winning chef with 20 years of experience in fine dining establishments"
+</ParamField>
+
+<ParamField path="area" type="enum" required>
+  Work area assigned to the chef
+  - **Database Type:** `enum`
+  - **Validation:** Required, must be one of the allowed values
+  - **Allowed Values:** 
+    - `preparacion` - Preparation area
+    - `cocinar` - Cooking station
+    - `servir` - Service/plating area
+    - `almacenamiento` - Storage management
+    - `lavar` - Dishwashing/cleaning
+    - `pedidos` - Order management
+  - **Example:** "cocinar"
+</ParamField>
+
+<ParamField path="image" type="string">
+  Path to the chef's profile image
+  - **Database Type:** `string`
+  - **Validation:** Nullable, image file (jpeg, png, jpg, gif), max 2048KB
+  - **Example:** "images/chefs/gordon-ramsay.jpg"
+</ParamField>
+
+## Area Types
+
+<ResponseField name="preparacion" type="area">
+  Preparation area - handling initial food preparation and mise en place
+</ResponseField>
+
+<ResponseField name="cocinar" type="area">
+  Cooking station - main cooking and culinary execution
+</ResponseField>
+
+<ResponseField name="servir" type="area">
+  Service area - food plating and presentation
+</ResponseField>
+
+<ResponseField name="almacenamiento" type="area">
+  Storage management - inventory and ingredient storage
+</ResponseField>
+
+<ResponseField name="lavar" type="area">
+  Dishwashing and cleaning - kitchen sanitation
+</ResponseField>
+
+<ResponseField name="pedidos" type="area">
+  Order management - coordinating and managing incoming orders
+</ResponseField>
+
+## Relationships
+
+### belongsTo: User
+
+<Expandable title="user()">
+  Each chef profile is associated with a user account in the system.
+
+  ```php
+  public function user()
+  {
+      return $this->belongsTo(User::class);
+  }
+  ```
+
+  <ResponseField name="Database Constraint" type="info">
+    The `user_id` foreign key has a `CASCADE` delete constraint, meaning when a user is deleted, their chef profile is also deleted automatically.
+  </ResponseField>
+
+  <ResponseField name="Usage Example" type="code">
+    ```php
+    $chef = Chef::find(1);
+    $user = $chef->user;
+    
+    echo "Chef: " . $chef->first_name . " " . $chef->last_name;
+    echo "Email: " . $user->email;
+    echo "User Type: " . $user->usertype;
+    ```
+  </ResponseField>
+</Expandable>
+
+## Validation Rules
+
+The `ChefProfileRequest` defines the following validation rules:
+
+```php
+public function rules(): array
+{
+    return [
+        'first_name' => 'required|string|max:255',
+        'last_name'  => 'nullable|string|max:255',
+        'specialty'  => 'required|string|max:255',
+        'description'=> 'nullable|string',
+        'area'       => 'required|in:preparacion,cocinar,servir,almacenamiento,lavar,pedidos',
+        'image'      => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+    ];
+}
+```
+
+### Authorization
+
+```php
+public function authorize(): bool
+{
+    // Only users with usertype 'chef' can create/edit chef profiles
+    return $this->user() && $this->user()->usertype === 'chef';
+}
+```
+
+## Database Schema
+
+```php
+Schema::create('chefs', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')
+          ->constrained()
+          ->onDelete('cascade');
+    $table->string('first_name');
+    $table->string('last_name');
+    $table->string('specialty');
+    $table->text('description')->nullable();
+    $table->enum('area', [
+        'preparacion',
+        'cocinar',
+        'servir',
+        'almacenamiento',
+        'lavar',
+        'pedidos'
+    ]);
+    $table->string('image')->nullable();
+    $table->timestamps();
+});
+```
+
+## Usage Examples
+
+### Creating a Chef Profile
+
+```php
+$chef = Chef::create([
+    'first_name' => 'Gordon',
+    'last_name' => 'Ramsay',
+    'specialty' => 'Modern European Cuisine',
+    'description' => 'Michelin-starred chef with extensive experience',
+    'area' => 'cocinar',
+    'image' => 'chefs/gordon-ramsay.jpg'
+]);
+```
+
+### Querying Chefs
+
+```php
+// Get all chefs in the cooking area
+$cookingChefs = Chef::where('area', 'cocinar')->get();
+
+// Get chefs with their user information
+$chefs = Chef::with('user')->get();
+
+// Find chefs by specialty
+$italianChefs = Chef::where('specialty', 'like', '%Italian%')->get();
+
+// Get chefs in a specific area with user details
+$preparationTeam = Chef::where('area', 'preparacion')
+    ->with('user')
+    ->orderBy('first_name')
+    ->get();
+```
+
+### Updating Chef Information
+
+```php
+$chef = Chef::find(1);
+$chef->update([
+    'specialty' => 'French Pastry',
+    'area' => 'servir',
+    'description' => 'Specialized in dessert presentation and plating'
+]);
+```
+
+### Working with Relationships
+
+```php
+// Get chef from user
+$user = User::where('usertype', 'chef')->first();
+$chefProfile = Chef::where('user_id', $user->id)->first();
+
+// Or using inverse relationship (if defined on User model)
+$chefProfile = $user->chef;
+```
+
+## Timestamps
+
+- `created_at`: Automatically set when the chef profile is created
+- `updated_at`: Automatically updated when the chef profile is modified
+
+## Security Notes
+
+<Warning>
+  The `ChefProfileRequest` authorization ensures that only authenticated users with `usertype = 'chef'` can create or modify chef profiles. This prevents unauthorized profile creation.
+</Warning>
+
+<Note>
+  When deleting a user account with `usertype = 'chef'`, the associated chef profile will be automatically deleted due to the CASCADE constraint on the `user_id` foreign key.
+</Note>

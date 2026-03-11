@@ -1,0 +1,466 @@
+---
+title: 'Configuration Guide'
+description: 'Complete guide to configuring your Restaurant Management System'
+icon: 'gear'
+---
+
+## Overview
+
+This guide explains all environment variables and configuration options for the Restaurant Management System. All configurations are managed through the `.env` file.
+
+## Getting Started
+
+<Steps>
+  <Step title="Copy Environment File">
+    Create your environment file from the example:
+    
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Generate Application Key">
+    Generate a unique encryption key:
+    
+    ```bash
+    php artisan key:generate
+    ```
+  </Step>
+
+  <Step title="Configure Required Variables">
+    Update the database and application settings according to your environment.
+  </Step>
+</Steps>
+
+## Application Configuration
+
+### Core Application Settings
+
+```bash .env
+APP_NAME=Laravel
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost
+```
+
+<Note>
+The Restaurant Management System uses Laravel 10.x with PHP 8.1+
+</Note>
+
+| Variable | Description | Values | Default |
+|----------|-------------|--------|----------|
+| `APP_NAME` | Application name displayed in emails and UI | String | `Laravel` |
+| `APP_ENV` | Current environment | `local`, `production`, `staging` | `local` |
+| `APP_KEY` | Encryption key for securing data | Base64 string (auto-generated) | Empty |
+| `APP_DEBUG` | Enable debug mode and error details | `true`, `false` | `true` |
+| `APP_URL` | Base URL of the application | Valid URL | `http://localhost` |
+
+<Warning>
+**Production Requirements:**
+- Set `APP_ENV=production`
+- Set `APP_DEBUG=false`
+- Update `APP_URL` to your domain
+- Generate a new `APP_KEY`
+</Warning>
+
+## Logging Configuration
+
+```bash .env
+LOG_CHANNEL=stack
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=debug
+```
+
+| Variable | Description | Values |
+|----------|-------------|--------|
+| `LOG_CHANNEL` | Primary logging channel | `stack`, `single`, `daily`, `slack` |
+| `LOG_DEPRECATIONS_CHANNEL` | Channel for deprecation warnings | `null`, `single`, `daily` |
+| `LOG_LEVEL` | Minimum log level to record | `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, `emergency` |
+
+<Note>
+For production, use `LOG_LEVEL=error` or `LOG_LEVEL=warning` to reduce log volume.
+</Note>
+
+## Database Configuration
+
+```bash .env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=restaurante
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `DB_CONNECTION` | Database driver | `mysql` |
+| `DB_HOST` | Database server hostname | `127.0.0.1` |
+| `DB_PORT` | Database server port | `3306` |
+| `DB_DATABASE` | Database name | `restaurante` |
+| `DB_USERNAME` | Database username | `root` |
+| `DB_PASSWORD` | Database password | Empty |
+
+### Supported Database Drivers
+
+The application is configured for MySQL, but Laravel supports:
+- MySQL 5.7+
+- PostgreSQL 11+
+- SQLite 3.8.8+
+- SQL Server 2017+
+
+<CodeGroup>
+```bash MySQL
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=restaurante
+DB_USERNAME=root
+DB_PASSWORD=secret
+```
+
+```bash PostgreSQL
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=restaurante
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+```
+
+```bash SQLite
+DB_CONNECTION=sqlite
+DB_DATABASE=/absolute/path/to/database.sqlite
+```
+</CodeGroup>
+
+## Driver Configurations
+
+### Broadcasting
+
+```bash .env
+BROADCAST_DRIVER=log
+```
+
+Controls real-time event broadcasting:
+- `log` - Logs events (development)
+- `pusher` - Uses Pusher service
+- `redis` - Uses Redis pub/sub
+- `null` - Disables broadcasting
+
+### Cache
+
+```bash .env
+CACHE_DRIVER=file
+```
+
+Determines cache storage mechanism:
+- `file` - File-based cache (default)
+- `redis` - Redis cache (recommended for production)
+- `memcached` - Memcached
+- `database` - Database cache
+- `array` - In-memory (testing only)
+
+### Filesystem
+
+```bash .env
+FILESYSTEM_DISK=local
+```
+
+Default file storage disk:
+- `local` - Local storage in `storage/app`
+- `public` - Public storage in `storage/app/public`
+- `s3` - Amazon S3 (requires configuration)
+
+### Queue
+
+```bash .env
+QUEUE_CONNECTION=sync
+```
+
+Queue driver for background jobs:
+- `sync` - Synchronous (no queue, immediate execution)
+- `database` - Database-backed queue
+- `redis` - Redis queue (recommended)
+- `sqs` - Amazon SQS
+- `null` - Discard jobs
+
+### Session
+
+```bash .env
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+```
+
+| Variable | Description | Values |
+|----------|-------------|--------|
+| `SESSION_DRIVER` | Session storage mechanism | `file`, `cookie`, `database`, `redis`, `memcached`, `array` |
+| `SESSION_LIFETIME` | Session lifetime in minutes | Integer (default: 120) |
+
+<Note>
+The application uses `database` sessions. Ensure the `sessions` table exists by running migrations.
+</Note>
+
+## External Services
+
+### Redis Configuration
+
+```bash .env
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+```
+
+Redis is optional but recommended for:
+- Caching in production
+- Queue management
+- Session storage
+- Real-time features
+
+### Memcached Configuration
+
+```bash .env
+MEMCACHED_HOST=127.0.0.1
+```
+
+Alternative caching backend to Redis.
+
+## Mail Configuration
+
+```bash .env
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+| Variable | Description |
+|----------|-------------|
+| `MAIL_MAILER` | Mail transport driver (`smtp`, `sendmail`, `mailgun`, `ses`, `postmark`) |
+| `MAIL_HOST` | SMTP server hostname |
+| `MAIL_PORT` | SMTP server port (25, 465, 587, 1025) |
+| `MAIL_USERNAME` | SMTP authentication username |
+| `MAIL_PASSWORD` | SMTP authentication password |
+| `MAIL_ENCRYPTION` | Encryption protocol (`tls`, `ssl`, `null`) |
+| `MAIL_FROM_ADDRESS` | Default sender email address |
+| `MAIL_FROM_NAME` | Default sender name |
+
+<CodeGroup>
+```bash Development (Mailpit)
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+```
+
+```bash Production (Gmail)
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+MAIL_ENCRYPTION=tls
+```
+
+```bash Production (SendGrid)
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.sendgrid.net
+MAIL_PORT=587
+MAIL_USERNAME=apikey
+MAIL_PASSWORD=your-sendgrid-api-key
+MAIL_ENCRYPTION=tls
+```
+</CodeGroup>
+
+## AWS Configuration
+
+```bash .env
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+```
+
+Required for:
+- S3 file storage
+- SES email sending
+- SQS queue management
+
+<Note>
+AWS configuration is optional unless you're using AWS services.
+</Note>
+
+## Pusher Configuration (Broadcasting)
+
+```bash .env
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_HOST=
+PUSHER_PORT=443
+PUSHER_SCHEME=https
+PUSHER_APP_CLUSTER=mt1
+```
+
+Required for real-time features like:
+- Live order updates
+- Real-time reservation notifications
+- Kitchen display updates
+
+### Vite Asset Configuration
+
+```bash .env
+VITE_APP_NAME="${APP_NAME}"
+VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+VITE_PUSHER_HOST="${PUSHER_HOST}"
+VITE_PUSHER_PORT="${PUSHER_PORT}"
+VITE_PUSHER_SCHEME="${PUSHER_SCHEME}"
+VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+```
+
+<Note>
+These variables expose configuration to the frontend JavaScript bundle. Only include non-sensitive data.
+</Note>
+
+## Environment-Specific Configurations
+
+### Local Development
+
+```bash .env
+APP_ENV=local
+APP_DEBUG=true
+APP_URL=http://localhost
+
+DB_HOST=127.0.0.1
+DB_DATABASE=restaurante
+
+CACHE_DRIVER=file
+QUEUE_CONNECTION=sync
+SESSION_DRIVER=database
+
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+```
+
+### Production
+
+```bash .env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://yourdomain.com
+
+DB_HOST=production-db-host
+DB_DATABASE=restaurante
+DB_USERNAME=prod_user
+DB_PASSWORD=secure-password
+
+CACHE_DRIVER=redis
+QUEUE_CONNECTION=redis
+SESSION_DRIVER=redis
+
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_ENCRYPTION=tls
+```
+
+## Package-Specific Configuration
+
+### Laravel Jetstream
+
+The application uses Laravel Jetstream for authentication:
+- Team management features
+- Profile management
+- Two-factor authentication support
+
+### Spatie Laravel Permission
+
+Role-based access control (RBAC) system:
+- Admin role: Full system access
+- Chef role: Kitchen management
+- Mesero (Waiter) role: Order management
+- User role: Customer access
+
+### Livewire
+
+Real-time component framework:
+- Dynamic UI updates
+- No page refreshes
+- Interactive components
+
+## Caching Configuration
+
+After changing configuration, clear and rebuild caches:
+
+```bash
+# Clear all caches
+php artisan cache:clear
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+
+# Rebuild caches (production only)
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+<Warning>
+Never run `config:cache` or `route:cache` in development. It will ignore `.env` changes.
+</Warning>
+
+## Validation and Testing
+
+### Verify Configuration
+
+```bash
+# Check current configuration
+php artisan config:show
+
+# Test database connection
+php artisan tinker
+>>> DB::connection()->getPdo();
+
+# Test mail configuration
+php artisan tinker
+>>> Mail::raw('Test', function($msg) { $msg->to('test@example.com')->subject('Test'); });
+```
+
+### Environment Detection
+
+```bash
+# Check current environment
+php artisan env
+
+# Run commands for specific environment
+php artisan migrate --env=production
+```
+
+## Security Considerations
+
+<Warning>
+**Critical Security Settings:**
+
+1. Never commit `.env` file to version control
+2. Use strong, unique `APP_KEY`
+3. Rotate database passwords regularly
+4. Use environment-specific credentials
+5. Enable HTTPS in production
+6. Restrict database user permissions
+7. Use strong mail passwords or API keys
+</Warning>
+
+## Next Steps
+
+- [Deploy to production](/guides/deployment)
+- [Set up database](/guides/database-setup)
+- [Configure Docker](/guides/docker)

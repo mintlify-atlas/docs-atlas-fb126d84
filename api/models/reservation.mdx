@@ -1,0 +1,214 @@
+---
+title: 'Reservation Model'
+description: 'Reservation model for managing table bookings with customer information and scheduling'
+---
+
+## Overview
+
+The `Reservation` model manages restaurant table reservations. It stores customer information, reservation details, and maintains a relationship with the tables being reserved.
+
+## Table Information
+
+<ParamField path="table" type="string">
+  **Table Name:** `reservations`
+</ParamField>
+
+## Model Definition
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Reservation extends Model
+{
+    use HasFactory;
+    
+    protected $fillable = [
+        'name', 
+        'email', 
+        'phone', 
+        'guest', 
+        'date', 
+        'time', 
+        'message', 
+        'table_id',
+    ];
+}
+```
+
+## Fillable Fields
+
+<ParamField path="name" type="string">
+  Customer name for the reservation
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "Jane Smith"
+</ParamField>
+
+<ParamField path="email" type="string">
+  Customer email address
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "jane.smith@example.com"
+</ParamField>
+
+<ParamField path="phone" type="string">
+  Customer phone number
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "+1-555-0456"
+</ParamField>
+
+<ParamField path="guest" type="string">
+  Number of guests for the reservation
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "4"
+</ParamField>
+
+<ParamField path="date" type="string">
+  Reservation date
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "2026-03-15"
+</ParamField>
+
+<ParamField path="time" type="string">
+  Reservation time
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "19:00"
+</ParamField>
+
+<ParamField path="message" type="string">
+  Special requests or additional notes
+  - **Database Type:** `string`
+  - **Nullable:** Yes
+  - **Example:** "Window seat preferred, celebrating anniversary"
+</ParamField>
+
+<ParamField path="table_id" type="unsignedBigInteger">
+  Foreign key reference to the tables table
+  - **Database Type:** `unsignedBigInteger`
+  - **Nullable:** Yes
+  - **Database Constraint:** Foreign key with `SET NULL` on delete
+  - **Example:** 3
+</ParamField>
+
+## Relationships
+
+### belongsTo: Table
+
+<Expandable title="table()">
+  Each reservation belongs to a specific table in the restaurant.
+
+  ```php
+  public function table()
+  {
+      return $this->belongsTo(Table::class);
+  }
+  ```
+
+  <ResponseField name="Usage Example" type="code">
+    ```php
+    $reservation = Reservation::find(1);
+    $table = $reservation->table;
+    echo "Table Number: " . $table->number;
+    echo "Seats: " . $table->seats;
+    ```
+  </ResponseField>
+
+  <ResponseField name="Eager Loading" type="code">
+    ```php
+    // Load reservations with their associated tables
+    $reservations = Reservation::with('table')->get();
+    
+    foreach ($reservations as $reservation) {
+        echo $reservation->name . " reserved " . $reservation->table->name;
+    }
+    ```
+  </ResponseField>
+</Expandable>
+
+## Database Schema
+
+```php
+Schema::create('reservations', function (Blueprint $table) {
+    $table->id();
+    $table->string('name')->nullable();
+    $table->string('email')->nullable();
+    $table->string('phone')->nullable();
+    $table->string('guest')->nullable();
+    $table->string('date')->nullable();
+    $table->string('time')->nullable();
+    $table->string('message')->nullable();
+    $table->unsignedBigInteger('table_id')->nullable();
+    $table->foreign('table_id')
+          ->references('id')
+          ->on('tables')
+          ->onDelete('set null');
+    $table->timestamps();
+});
+```
+
+## Usage Examples
+
+### Creating a Reservation
+
+```php
+$reservation = Reservation::create([
+    'name' => 'Jane Smith',
+    'email' => 'jane@example.com',
+    'phone' => '+1-555-0456',
+    'guest' => '4',
+    'date' => '2026-03-15',
+    'time' => '19:00',
+    'message' => 'Window seat preferred',
+    'table_id' => 3
+]);
+```
+
+### Querying Reservations
+
+```php
+// Get all reservations for a specific date
+$reservations = Reservation::where('date', '2026-03-15')->get();
+
+// Get reservations with table information
+$reservations = Reservation::with('table')
+    ->where('date', '2026-03-15')
+    ->get();
+
+// Find reservations by customer email
+$customerReservations = Reservation::where('email', 'jane@example.com')
+    ->orderBy('date', 'desc')
+    ->get();
+```
+
+### Updating a Reservation
+
+```php
+$reservation = Reservation::find(1);
+$reservation->update([
+    'time' => '20:00',
+    'guest' => '5',
+    'message' => 'Updated to 5 guests, window seat still preferred'
+]);
+```
+
+## Timestamps
+
+- `created_at`: Automatically set when the reservation is created
+- `updated_at`: Automatically updated when the reservation is modified
+
+## Notes
+
+<Note>
+  Consider implementing validation to:
+  - Ensure date and time fields contain valid date/time values
+  - Check table availability before creating reservations
+  - Validate that guest count doesn't exceed table capacity
+  - Prevent double-booking of tables at the same time
+</Note>

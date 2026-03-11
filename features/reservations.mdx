@@ -1,0 +1,314 @@
+---
+title: 'Reservations'
+description: 'Table reservation system with automatic table assignment and capacity validation'
+---
+
+## Overview
+
+The reservation system allows customers to book tables in advance. Admins and meseros (waiters) can manage reservations, assign tables, and ensure capacity requirements are met.
+
+## Reservation Model
+
+The Reservation model stores customer booking information and links to assigned tables.
+
+```php app/Models/Reservation.php
+class Reservation extends Model
+{
+    use HasFactory;
+    
+    protected $fillable = [
+        'name', 
+        'email', 
+        'phone', 
+        'guest', 
+        'date', 
+        'time', 
+        'message', 
+        'table_id',
+    ];
+
+    // Relationship with the tables table
+    public function table()
+    {
+        return $this->belongsTo(Table::class);
+    }
+}
+```
+
+### Reservation Attributes
+
+<ParamField path="name" type="string" required>
+  Customer name for the reservation
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  Customer email address for confirmation
+</ParamField>
+
+<ParamField path="phone" type="string" required>
+  Contact phone number
+</ParamField>
+
+<ParamField path="guest" type="integer" required>
+  Number of guests (used for table capacity matching)
+</ParamField>
+
+<ParamField path="date" type="date" required>
+  Reservation date
+</ParamField>
+
+<ParamField path="time" type="time" required>
+  Reservation time slot
+</ParamField>
+
+<ParamField path="message" type="text">
+  Optional special requests or notes from customer
+</ParamField>
+
+<ParamField path="table_id" type="integer">
+  Foreign key to assigned table (null until assigned)
+</ParamField>
+
+## Reservation Controller
+
+The ReservationController handles listing reservations and assigning tables.
+
+### List All Reservations
+
+```php app/Http/Controllers/Admin/ReservationController.php
+public function index()
+{
+    $reservations = Reservation::with('table')
+        ->orderBy('date','desc')
+        ->paginate(20);
+    $tables = Table::where('status', 'disponible')->get();
+    
+    return view('admin.reservations', compact('reservations','tables'));
+}
+```
+
+<Note>
+The index method loads available tables (`status = 'disponible'`) for the assignment interface and eager loads existing table relationships to prevent N+1 queries.
+</Note>
+
+### Assign Table to Reservation
+
+The system validates that the table capacity matches the number of guests before assignment:
+
+```php app/Http/Controllers/Admin/ReservationController.php
+public function assignTable(Request $request, Reservation $reservation)
+{
+    $data = $request->validate([
+        'table_id' => 'required|exists:tables,id',
+    ]);
+
+    $table = Table::findOrFail($data['table_id']);
+
+    // Check seats capacity match
+    if ((int)$reservation->guest !== (int)$table->seats) {
+        return response()->json([
+            'success' => false,
+            'message' => 'El número de invitados no coincide con los asientos de la mesa.'
+        ]);
+    }
+
+    DB::transaction(function () use ($reservation, $table) {
+        $reservation->table_id = $table->id;
+        $reservation->save();
+
+        $table->status = 'reservada';
+        $table->save();
+    });
+
+    return response()->json([
+        'success' => true,
+        'table_name' => $table->name,
+        'user_name' => $reservation->name,
+    ]);
+}
+```
+
+<Accordion title="Transaction Safety">
+The assignment process uses database transactions (`DB::transaction()`) to ensure both the reservation update and table status change succeed together. If either operation fails, both are rolled back to maintain data consistency.
+</Accordion>
+
+## Table-Reservation Relationship
+
+Tables have a one-to-one relationship with reservations:
+
+```php app/Models/Table.php
+public function reservation()
+{
+    return $this->hasOne(Reservation::class);
+}
+```
+
+<Note type="warning">
+**Important**: A table can only have one active reservation at a time. The status is updated to 'reservada' when assigned.
+</Note>
+
+## Capacity Validation Logic
+
+The system enforces exact capacity matching:
+
+<Tabs>
+  <Tab title="Valid Assignment">
+    ```php
+    // Reservation for 4 guests
+    $reservation->guest = 4;
+    
+    // Table with 4 seats
+    $table->seats = 4;
+    
+    // ✅ Assignment succeeds
+    if ((int)$reservation->guest === (int)$table->seats) {
+        // Proceed with assignment
+    }
+    ```
+  </Tab>
+  <Tab title="Invalid Assignment">
+    ```php
+    // Reservation for 4 guests
+    $reservation->guest = 4;
+    
+    // Table with 6 seats
+    $table->seats = 6;
+    
+    // ❌ Assignment fails
+    if ((int)$reservation->guest !== (int)$table->seats) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Capacity mismatch'
+        ]);
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Table Status Flow
+
+When a table is assigned to a reservation, its status changes:
+
+```php
+// Before assignment
+$table->status = 'disponible';
+
+// After assignment
+$table->status = 'reservada';
+
+// After guests arrive and are seated
+$table->status = 'ocupada';
+
+// After completion
+$table->status = 'disponible';
+```
+
+## Routes and Access Control
+
+Reservation management routes are restricted to admin and mesero roles:
+
+```php routes/web.php
+Route::middleware('role:admin,mesero')->group(function () {
+    Route::get('reservations', [
+        AdminReservationController::class, 'index'
+    ])->name('reservations.index');
+    
+    Route::post('reservations/{reservation}/assign-table', [
+        AdminReservationController::class, 'assignTable'
+    ])->name('reservations.assignTable');
+    
+    Route::delete('reservations/{reservation}', [
+        AdminReservationController::class, 'destroy'
+    ])->name('reservations.destroy');
+});
+```
+
+**Access Permissions:**
+- ✅ Admin: Full access
+- ✅ Mesero: Full access
+- ❌ Chef: No access
+- ❌ Customers: Can create through public form (not shown in source)
+
+## API Response Format
+
+The assign table endpoint returns JSON for AJAX integration:
+
+<Accordion title="Success Response">
+  ```json
+  {
+    "success": true,
+    "table_name": "Table 5",
+    "user_name": "John Doe"
+  }
+  ```
+</Accordion>
+
+<Accordion title="Failure Response">
+  ```json
+  {
+    "success": false,
+    "message": "El número de invitados no coincide con los asientos de la mesa."
+  }
+  ```
+</Accordion>
+
+## Workflow Example
+
+1. **Customer Creates Reservation**
+   - Submits name, email, phone, guest count, date, time
+   - Reservation created with `table_id = null`
+
+2. **Mesero Reviews Reservations**
+   - Views list at `/admin/reservations`
+   - Sees available tables filtered by status
+
+3. **Assign Table**
+   - Selects table with matching capacity
+   - System validates: `guest count == table seats`
+   - Both records updated in transaction
+
+4. **Table Status Updates**
+   - Table status changes to 'reservada'
+   - Table appears in reserved tables list
+
+5. **Guest Arrival**
+   - Mesero marks table as 'ocupada'
+   - Reservation remains linked
+
+6. **Completion**
+   - After service, table marked as 'disponible'
+   - Reservation can be deleted or archived
+
+## Best Practices
+
+1. **Exact Capacity Matching**: Always enforce guest count equals table seats
+2. **Transaction Usage**: Wrap multi-model updates in database transactions
+3. **Status Validation**: Only show available tables for assignment
+4. **Eager Loading**: Use `with('table')` to prevent N+1 queries
+5. **Date Ordering**: Display reservations ordered by date (newest first)
+6. **Pagination**: Paginate reservation lists for performance
+
+## Common Queries
+
+```php
+// Get all unassigned reservations
+$unassigned = Reservation::whereNull('table_id')->get();
+
+// Get reservations for today
+$today = Reservation::whereDate('date', today())->get();
+
+// Get reservations for a specific table
+$tableReservations = Reservation::where('table_id', $tableId)->get();
+
+// Count reservations by date
+$count = Reservation::whereDate('date', '2026-03-15')->count();
+
+// Get available tables with exact seat count
+$tables = Table::where('status', 'disponible')
+               ->where('seats', $guestCount)
+               ->get();
+```
+
+<Note type="info">
+Consider implementing time-based reservation expiration to automatically release tables if guests don't arrive within a grace period.
+</Note>

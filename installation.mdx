@@ -1,0 +1,406 @@
+---
+title: Installation
+description: Complete guide to installing and configuring the Restaurant Management System
+---
+
+## Prerequisites
+
+Before installing the Restaurant Management System, ensure your development environment meets these requirements:
+
+### Required Software
+
+- **PHP** 8.1 or higher
+- **Composer** 2.x
+- **Node.js** 16.x or higher
+- **npm** 8.x or higher
+- **MySQL** 5.7+ or **MariaDB** 10.3+
+- **Git** (for cloning the repository)
+
+<Warning>
+  PHP 8.1 is the minimum required version. Using PHP 8.2 or 8.3 is recommended for better performance and security.
+</Warning>
+
+### Verify PHP Extensions
+
+Ensure the following PHP extensions are enabled:
+
+```bash
+php -m | grep -E "PDO|mbstring|tokenizer|xml|ctype|json|bcmath|fileinfo"
+```
+
+Required extensions:
+- PDO
+- mbstring
+- OpenSSL
+- Tokenizer
+- XML
+- Ctype
+- JSON
+- BCMath
+- Fileinfo
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the project to your local machine:
+    
+    ```bash
+    git clone <repository-url> restaurant-management
+    cd restaurant-management
+    ```
+  </Step>
+
+  <Step title="Install PHP Dependencies">
+    Install all Composer dependencies defined in `composer.json`:
+    
+    ```bash
+    composer install
+    ```
+    
+    This will install:
+    - Laravel Framework (^10.10)
+    - Laravel Jetstream (^4.3)
+    - Livewire (^3.0)
+    - Spatie Laravel Permission (^6.21)
+    - Laravel Sanctum (^3.3)
+    - And other dependencies
+    
+    <Tip>
+      If you encounter memory issues, try: `php -d memory_limit=-1 /usr/local/bin/composer install`
+    </Tip>
+  </Step>
+
+  <Step title="Install Node Dependencies">
+    Install frontend dependencies and build assets:
+    
+    ```bash
+    npm install
+    ```
+    
+    This installs:
+    - Tailwind CSS (^3.1.0)
+    - Vite (^5.0.0)
+    - Alpine.js (via Livewire)
+    - SweetAlert2 (^11.14.5)
+    - Axios (^1.6.4)
+  </Step>
+
+  <Step title="Environment Configuration">
+    Copy the example environment file and generate an application key:
+    
+    ```bash
+    cp .env.example .env
+    php artisan key:generate
+    ```
+    
+    <Note>
+      The `key:generate` command sets the `APP_KEY` value in your `.env` file, which is used for encryption.
+    </Note>
+  </Step>
+
+  <Step title="Configure Database">
+    Edit your `.env` file with your database credentials:
+    
+    ```bash .env
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_PORT=3306
+    DB_DATABASE=restaurante
+    DB_USERNAME=root
+    DB_PASSWORD=your_password
+    ```
+    
+    Create the database:
+    
+    ```bash
+    mysql -u root -p
+    ```
+    
+    ```sql
+    CREATE DATABASE restaurante CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    EXIT;
+    ```
+  </Step>
+
+  <Step title="Run Migrations">
+    Create all database tables by running migrations:
+    
+    ```bash
+    php artisan migrate
+    ```
+    
+    This creates tables for:
+    - Users and authentication (users, password_reset_tokens, sessions)
+    - Roles and permissions (roles, permissions, model_has_roles, etc.)
+    - Food management (food, categories)
+    - Orders (orders, order_items, carts)
+    - Restaurant operations (tables, reservations, chefs)
+    
+    <Warning>
+      Make sure your database exists and credentials are correct before running migrations. Migration failures usually indicate connection issues.
+    </Warning>
+  </Step>
+
+  <Step title="Seed the Database">
+    Populate the database with initial data including roles and demo users:
+    
+    ```bash
+    php artisan db:seed
+    ```
+    
+    This creates:
+    - **4 User Roles**: admin, user, chef, mesero
+    - **4 Demo Users** with credentials:
+      - Admin: `admin@gmail.com` / `admin1234`
+      - User: `user@gmail.com` / `user1234`
+      - Chef: `chef@gmail.com` / `chef1234`
+      - Waiter: `mesero@gmail.com` / `mesero1234`
+    - **Food Categories**: Appetizers, Main Courses, Desserts, Beverages, etc.
+  </Step>
+
+  <Step title="Storage Link">
+    Create a symbolic link for file storage (for food images):
+    
+    ```bash
+    php artisan storage:link
+    ```
+    
+    This links `public/storage` to `storage/app/public` for public file access.
+  </Step>
+
+  <Step title="Build Frontend Assets">
+    Compile frontend assets for development:
+    
+    ```bash
+    npm run dev
+    ```
+    
+    Or for production:
+    
+    ```bash
+    npm run build
+    ```
+    
+    <Tip>
+      Keep `npm run dev` running during development for hot module replacement (HMR). Vite will watch for file changes and automatically rebuild.
+    </Tip>
+  </Step>
+
+  <Step title="Start the Development Server">
+    Launch the Laravel development server:
+    
+    ```bash
+    php artisan serve
+    ```
+    
+    The application will be available at `http://localhost:8000`
+  </Step>
+</Steps>
+
+## Verification
+
+After installation, verify everything is working:
+
+### Check Application Status
+
+```bash
+php artisan about
+```
+
+This displays your Laravel installation details, environment, and configuration.
+
+### Test Database Connection
+
+```bash
+php artisan db:show
+```
+
+This confirms your database connection and displays table information.
+
+### Verify Permissions
+
+Check that roles and permissions were created:
+
+```bash
+php artisan tinker
+```
+
+```php
+Spatie\Permission\Models\Role::all()->pluck('name');
+// Should return: ["admin", "user", "chef", "mesero"]
+
+User::with('roles')->get();
+// Should show 4 users with their assigned roles
+```
+
+## Configuration Options
+
+### Application Settings
+
+```bash .env
+APP_NAME="Restaurant Management"
+APP_ENV=local
+APP_DEBUG=true
+APP_URL=http://localhost:8000
+```
+
+### Session Configuration
+
+```bash .env
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+```
+
+<Note>
+  The system uses database sessions by default. Make sure the `sessions` table exists after running migrations.
+</Note>
+
+### Mail Configuration (Optional)
+
+For email notifications and password resets:
+
+```bash .env
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+<Tip>
+  For local development, use [Mailpit](https://github.com/axllent/mailpit) or [Mailtrap](https://mailtrap.io) to test emails without sending real messages.
+</Tip>
+
+## Alternative Installation Methods
+
+### Using Laravel Sail (Docker)
+
+For a containerized development environment:
+
+```bash
+# Install dependencies via Composer in a temporary container
+docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$(pwd):/var/www/html" \
+    -w /var/www/html \
+    laravelsail/php82-composer:latest \
+    composer install --ignore-platform-reqs
+
+# Start Sail
+./vendor/bin/sail up -d
+
+# Run migrations and seeders
+./vendor/bin/sail artisan migrate --seed
+
+# Install npm dependencies
+./vendor/bin/sail npm install
+./vendor/bin/sail npm run dev
+```
+
+### Using Laravel Valet (macOS)
+
+For macOS users with Valet installed:
+
+```bash
+cd restaurant-management
+composer install
+cp .env.example .env
+php artisan key:generate
+valet link restaurant-management
+```
+
+Access your site at `http://restaurant-management.test`
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Composer Install Fails">
+    **Issue**: Memory limit or dependency conflicts
+    
+    **Solutions**:
+    ```bash
+    # Increase memory limit
+    php -d memory_limit=-1 /usr/local/bin/composer install
+    
+    # Clear Composer cache
+    composer clear-cache
+    
+    # Update dependencies
+    composer update
+    ```
+  </Accordion>
+
+  <Accordion title="Migration Errors">
+    **Issue**: Database connection or table already exists
+    
+    **Solutions**:
+    ```bash
+    # Test database connection
+    php artisan db:show
+    
+    # Fresh migration (WARNING: destroys data)
+    php artisan migrate:fresh --seed
+    
+    # Reset specific migration
+    php artisan migrate:rollback --step=1
+    php artisan migrate
+    ```
+  </Accordion>
+
+  <Accordion title="Permission Denied Errors">
+    **Issue**: Storage or cache directory permissions
+    
+    **Solution**:
+    ```bash
+    # Fix permissions (Linux/macOS)
+    chmod -R 775 storage bootstrap/cache
+    chown -R $USER:www-data storage bootstrap/cache
+    
+    # Clear cache
+    php artisan cache:clear
+    php artisan config:clear
+    php artisan view:clear
+    ```
+  </Accordion>
+
+  <Accordion title="Assets Not Loading">
+    **Issue**: Vite not running or build failed
+    
+    **Solutions**:
+    ```bash
+    # Ensure Vite is running
+    npm run dev
+    
+    # Or build for production
+    npm run build
+    
+    # Clear npm cache
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Now that your installation is complete:
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    Follow our quickstart guide to create your first menu items and process orders
+  </Card>
+  
+  <Card title="Authentication" icon="shield" href="/features/authentication">
+    Learn about the role-based authentication system
+  </Card>
+</CardGroup>
+
+<Tip>
+  Save the seeded user credentials in a secure location. You'll need them to log in for the first time.
+</Tip>

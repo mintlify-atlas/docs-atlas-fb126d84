@@ -1,0 +1,422 @@
+---
+title: 'HomeController'
+description: 'Public-facing controller for home page, menu views, orders, and table status management'
+icon: 'house'
+---
+
+## Overview
+
+The `HomeController` handles all public-facing and authenticated user operations including the main homepage, menu browsing, food details, order confirmation, and table status updates.
+
+**Location:** `app/Http/Controllers/HomeController.php`
+
+---
+
+## Methods
+
+### index()
+
+Displays the main public homepage with paginated foods, chefs, cart count, and categories.
+
+<ParamField path="return" type="View">
+  Returns the home view with foods, chefs, cart count, and categories
+</ParamField>
+
+**Route:** `GET /`
+
+**Route Name:** `home`
+
+**Implementation:**
+
+```php
+public function index()
+{
+    // Paginamos para evitar cargar todo en memoria
+    $foods = Food::with('category')->latest()->paginate(12);
+    $chefs = Chef::all();
+    $user = Auth::user();
+    $count = $user ? Cart::where('user_id', $user->id)->count() : 0;
+    $categories = Category::withCount('foods')->get();
+
+    return view('home', compact('foods','chefs','count','categories'));
+}
+```
+
+**Response Data:**
+
+<ResponseField name="foods" type="Collection">
+  Paginated collection of Food models with category relationships (12 per page)
+</ResponseField>
+
+<ResponseField name="chefs" type="Collection">
+  Collection of all Chef models
+</ResponseField>
+
+<ResponseField name="count" type="integer">
+  Number of items in authenticated user's cart (0 if guest)
+</ResponseField>
+
+<ResponseField name="categories" type="Collection">
+  Collection of categories with food count
+</ResponseField>
+
+---
+
+### redirects()
+
+Redirects users after login based on their role (admin, chef, mesero) or usertype.
+
+<ParamField path="request" type="Request">
+  HTTP request instance
+</ParamField>
+
+<ParamField path="return" type="RedirectResponse">
+  Redirects to appropriate dashboard or home page
+</ParamField>
+
+**Route:** `GET /redirects`
+
+**Route Name:** `redirects`
+
+**Middleware:** `auth`
+
+**Implementation:**
+
+```php
+public function redirects(Request $request)
+{
+    $user = Auth::user();
+    if (! $user) {
+        return redirect()->route('home');
+    }
+
+    // Preferir Spatie roles si existe el método
+    if (method_exists($user, 'hasRole')) {
+        if ($user->hasAnyRole(['admin','chef','mesero'])) {
+            return redirect()->route('admin.dashboard');
+        }
+    }
+    // Fallback a usertype column
+    switch ($user->usertype ?? null) {
+        case 'admin':
+            return redirect()->route('admin.dashboard');
+        case 'chef':
+            return redirect()->route('chef.dashboard');
+        case 'mesero':
+            return redirect()->route('mesero.dashboard');
+        default:
+            return redirect()->route('home');
+    }
+}
+```
+
+**Redirect Logic:**
+
+- Supports both Spatie Laravel Permission roles and usertype column
+- Admin/Chef/Mesero → `admin.dashboard`
+- Default/Guest → `home`
+
+---
+
+### comidaview()
+
+Displays the complete menu with paginated foods.
+
+<ParamField path="return" type="View">
+  Returns the menu view with paginated foods and cart count
+</ParamField>
+
+**Routes:** 
+- `GET /comidaview` (name: `comidaview`)
+- `GET /menu` (name: `menu`)
+
+**Implementation:**
+
+```php
+public function comidaview()
+{
+    $foods = Food::with('category')->paginate(24);
+    $user = Auth::user();
+    $count = $user ? Cart::where('user_id', $user->id)->count() : 0;
+
+    return view('comidaview', compact('foods','count'));
+}
+```
+
+**Response Data:**
+
+<ResponseField name="foods" type="Collection">
+  Paginated collection of Food models with categories (24 per page)
+</ResponseField>
+
+<ResponseField name="count" type="integer">
+  Cart item count for authenticated user
+</ResponseField>
+
+---
+
+### infocomida()
+
+Displays detailed information for a specific food item.
+
+<ParamField path="food" type="Food">
+  Food model instance (route-model binding)
+</ParamField>
+
+<ParamField path="return" type="View">
+  Returns food detail view
+</ParamField>
+
+**Route:** `GET /infocomida/{food}`
+
+**Route Name:** `infocomida`
+
+**Implementation:**
+
+```php
+public function infocomida(Food $food)
+{
+    return view('infocomida', compact('food'));
+}
+```
+
+**Response Data:**
+
+<ResponseField name="food" type="Food">
+  Single Food model with all attributes (title, price, description, ingredients, etc.)
+</ResponseField>
+
+---
+
+### updateStatus()
+
+Updates the status of a table (disponible, reservada, ocupada).
+
+<ParamField path="request" type="Request" required>
+  HTTP request with status field
+</ParamField>
+
+<ParamField path="table" type="Table" required>
+  Table model instance (route-model binding)
+</ParamField>
+
+<ParamField path="return" type="RedirectResponse">
+  Redirects back with success message
+</ParamField>
+
+**Implementation:**
+
+```php
+public function updateStatus(Request $request, Table $table)
+{
+    $data = $request->validate([
+        'status' => 'required|string|in:disponible,reservada,ocupada'
+    ]);
+
+    $table->update(['status' => $data['status']]);
+
+    return redirect()->back()->with('success', 'Estado de la mesa actualizado correctamente.');
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="status" type="string" required>
+  Table status - must be one of: `disponible`, `reservada`, `ocupada`
+</ParamField>
+
+---
+
+### orderConfirm()
+
+Creates a new order with order items in a database transaction. Supports both structured item format and legacy array format.
+
+<ParamField path="request" type="Request" required>
+  HTTP request with order details and items
+</ParamField>
+
+<ParamField path="return" type="RedirectResponse">
+  Redirects to home with success/error message
+</ParamField>
+
+**Route:** `POST /orderconfirm`
+
+**Route Name:** `order.confirm`
+
+**Middleware:** `auth`
+
+**Implementation:**
+
+```php
+public function orderConfirm(Request $request)
+{
+    // Primero validamos campos comunes
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'phone' => 'required|string|max:40',
+        'address' => 'nullable|string',
+    ]);
+
+    $user = Auth::user();
+
+    // Two possible payloads: 'items' structured or legacy arrays
+    $items = $request->input('items');
+
+    // Normalize items
+    $normalized = [];
+
+    if (is_array($items) && count($items) > 0) {
+        // validate each item
+        foreach ($items as $i => $it) {
+            $validated = \Validator::make($it, [
+                'food_id' => 'required|exists:foods,id',
+                'quantity' => 'required|integer|min:1',
+            ])->validate();
+
+            $food = Food::find($validated['food_id']);
+            $normalized[] = [
+                'food_id' => $food->id,
+                'title' => $food->title,
+                'price' => $food->price,
+                'quantity' => (int)$validated['quantity'],
+                'subtotal' => $food->price * (int)$validated['quantity'],
+            ];
+        }
+    } else if ($request->has('foodname') && is_array($request->foodname)) {
+        // legacy handling (arrays)
+        $names = $request->foodname;
+        $prices = $request->price ?? [];
+        $qtys = $request->quantity ?? [];
+
+        foreach ($names as $k => $name) {
+            $price = isset($prices[$k]) ? floatval($prices[$k]) : 0;
+            $qty = isset($qtys[$k]) ? intval($qtys[$k]) : 1;
+            $normalized[] = [
+                'food_id' => null,
+                'title' => $name,
+                'price' => $price,
+                'quantity' => $qty,
+                'subtotal' => $price * $qty,
+            ];
+        }
+    } else {
+        return redirect()->back()->with('error', 'No se enviaron items para la orden.');
+    }
+
+    // Crear Order + OrderItems en transacción
+    DB::beginTransaction();
+    try {
+        $order = Order::create([
+            'user_id' => $user ? $user->id : null,
+            'customer_name' => $request->name,
+            'phone' => $request->phone,
+            'address' => $request->address,
+            'total' => 0,
+            'status' => 'pending',
+        ]);
+
+        $total = 0;
+        foreach ($normalized as $it) {
+            // Si existe food_id lo guardamos, sino guardamos title/price/texto
+            $orderItem = $order->items()->create([
+                'food_id' => $it['food_id'] ?? null,
+                'title'   => $it['title'],
+                'price'   => $it['price'],
+                'quantity'=> $it['quantity'],
+                'subtotal'=> $it['subtotal'],
+            ]);
+            $total += $it['subtotal'];
+        }
+
+        $order->update(['total' => $total]);
+
+        // Si el usuario autenticado tenía items en cart, eliminar los correspondientes
+        if ($user) {
+            $cartQuery = Cart::where('user_id', $user->id);
+            // Si food_ids are available, delete those; otherwise empty cart
+            $foodIds = array_filter(array_column($normalized, 'food_id'));
+            if (count($foodIds) > 0) {
+                $cartQuery->whereIn('food_id', $foodIds)->delete();
+            } else {
+                // legacy: delete all for simplicity (or customize)
+                $cartQuery->delete();
+            }
+        }
+
+        DB::commit();
+        return redirect()->route('home')->with('success', 'Orden creada correctamente. ID: ' . $order->id);
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        // log error en producción (Log::error($e))
+        return redirect()->back()->with('error', 'No se pudo procesar la orden. Intente de nuevo.');
+    }
+}
+```
+
+**Validation Rules:**
+
+<ParamField path="name" type="string" required>
+  Customer name (max 255 characters)
+</ParamField>
+
+<ParamField path="phone" type="string" required>
+  Customer phone number (max 40 characters)
+</ParamField>
+
+<ParamField path="address" type="string">
+  Customer delivery address (optional)
+</ParamField>
+
+**Request Format (Recommended):**
+
+```json
+{
+  "name": "John Doe",
+  "phone": "555-1234",
+  "address": "123 Main St",
+  "items": [
+    {
+      "food_id": 1,
+      "quantity": 2
+    },
+    {
+      "food_id": 3,
+      "quantity": 1
+    }
+  ]
+}
+```
+
+**Legacy Format (Also Supported):**
+
+```json
+{
+  "name": "John Doe",
+  "phone": "555-1234",
+  "address": "123 Main St",
+  "foodname": ["Pizza", "Burger"],
+  "price": [12.99, 8.99],
+  "quantity": [2, 1]
+}
+```
+
+**Item Validation (Structured Format):**
+
+<ParamField path="items[].food_id" type="integer" required>
+  Food ID (must exist in foods table)
+</ParamField>
+
+<ParamField path="items[].quantity" type="integer" required>
+  Quantity ordered (minimum 1)
+</ParamField>
+
+**Success Response:**
+
+Redirects to home page with success message containing the order ID.
+
+**Error Handling:**
+
+- Uses database transactions for data integrity
+- Rolls back on any error
+- Automatically clears cart items after successful order
+- Returns user-friendly error messages
